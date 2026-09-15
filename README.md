@@ -46,7 +46,7 @@ Create a new task in Codex and send this prompt:
 Help me install PoloX AI locally:
 1. Check that Node.js 22.20 or newer and pnpm are installed. Install any missing prerequisites.
 2. Install FFmpeg, including ffprobe, for video concatenation and verify that both commands are available.
-3. Clone https://github.com/saihhold-zhao/polox_ai and open the project directory.
+3. Clone https://github.com/pxsenmaster-coder/polox-ai-domestic and open the project directory.
 4. Run pnpm i to install dependencies.
 ```
 
@@ -65,7 +65,7 @@ The default address is [http://localhost:3001](http://localhost:3001). **You do 
 You need **Node.js 22.20 or newer** and **pnpm**. For the first run:
 
 ```sh
-git clone https://github.com/saihhold-zhao/polox_ai.git
+git clone https://github.com/pxsenmaster-coder/polox-ai-domestic.git
 cd polox_ai
 pnpm i
 pnpm dev
@@ -142,13 +142,13 @@ A typical workflow looks like this:
 
 After assembly, continue the conversation to revise shots or add scenes. You can guide the whole process through the agent.
 
-The [long-form video skill](server/agent/skills/long-form-video.md) defines this workflow and still has room for improvement—for example, using audio references to maintain consistent character voices. Suggestions and contributions are welcome through [Issues](https://github.com/saihhold-zhao/polox_ai/issues).
+The [long-form video skill](server/agent/skills/long-form-video.md) defines this workflow and still has room for improvement—for example, using audio references to maintain consistent character voices. Suggestions and contributions are welcome through [Issues](https://github.com/pxsenmaster-coder/polox-ai-domestic/issues).
 
 ## Troubleshooting and feedback
 
 If installation or usage goes wrong, ask Codex to inspect the error and help you resolve it. Share the relevant error message and what you were trying to do.
 
-If you find a bug or an improvement that would help other users, please [open an issue](https://github.com/saihhold-zhao/polox_ai/issues). Codex can help you draft and submit it. Include steps to reproduce, your operating system, and relevant logs; remove API keys and other private information before sharing.
+If you find a bug or an improvement that would help other users, please [open an issue](https://github.com/pxsenmaster-coder/polox-ai-domestic/issues). Codex can help you draft and submit it. Include steps to reproduce, your operating system, and relevant logs; remove API keys and other private information before sharing.
 
 ## Local data
 

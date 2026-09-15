@@ -46,7 +46,7 @@ PoloX 基于 Nuxt、Vue 和 SQLite 在本地运行。使用自己的 OpenRouter�
 请帮我在本地安装 PoloX AI：
 1. 检查是否已安装 Node.js 22.20 或更新版本，以及 pnpm；如有缺失，请安装。
 2. 安装 FFmpeg（包含 ffprobe），用于视频拼接，并确认这两个命令可用。
-3. 克隆 https://github.com/saihhold-zhao/polox_ai 并进入项目目录。
+3. 克隆 https://github.com/pxsenmaster-coder/polox-ai-domestic 并进入项目目录。
 4. 执行 pnpm i 安装依赖。
 ```
 
@@ -65,7 +65,7 @@ PoloX 基于 Nuxt、Vue 和 SQLite 在本地运行。使用自己的 OpenRouter�
 请先安装 **Node.js 22.20 或更新版本**和 **pnpm**。首次运行：
 
 ```sh
-git clone https://github.com/saihhold-zhao/polox_ai.git
+git clone https://github.com/pxsenmaster-coder/polox-ai-domestic.git
 cd polox_ai
 pnpm i
 pnpm dev
@@ -142,13 +142,13 @@ DeepSeek 直连推荐使用支持图片理解的 **DeepSeek V4 Flash Vision Exp*
 
 视频拼接完成后，你仍可以通过对话要求 Agent 修改镜头或补充场景，整个创作过程都可以围绕与 Agent 的沟通展开。
 
-这套流程由[长视频生成 Skill](server/agent/skills/long-form-video.md) 定义，还有较多优化空间，例如引入声音参考以保持角色声音一致。欢迎通过 [Issue](https://github.com/saihhold-zhao/polox_ai/issues) 提出建议或参与改进。
+这套流程由[长视频生成 Skill](server/agent/skills/long-form-video.md) 定义，还有较多优化空间，例如引入声音参考以保持角色声音一致。欢迎通过 [Issue](https://github.com/pxsenmaster-coder/polox-ai-domestic/issues) 提出建议或参与改进。
 
 ## 问题排查与反馈
 
 安装或使用过程中遇到问题，可以先让 Codex 检查报错并协助解决。提供相关错误信息，以及问题发生前的操作，有助于定位原因。
 
-如果发现值得修复的问题，或有对其他用户也有帮助的建议，欢迎[提交 Issue](https://github.com/saihhold-zhao/polox_ai/issues)。不熟悉操作也没关系，可以让 Codex 帮你整理并提交。请附上复现步骤、操作系统和相关日志，并在分享前删除 API Key 等私密信息。
+如果发现值得修复的问题，或有对其他用户也有帮助的建议，欢迎[提交 Issue](https://github.com/pxsenmaster-coder/polox-ai-domestic/issues)。不熟悉操作也没关系，可以让 Codex 帮你整理并提交。请附上复现步骤、操作系统和相关日志，并在分享前删除 API Key 等私密信息。
 
 ## 本地数据
 

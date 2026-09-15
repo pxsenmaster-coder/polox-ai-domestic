@@ -66,7 +66,7 @@ You need **Node.js 22.20 or newer** and **pnpm**. For the first run:
 
 ```sh
 git clone https://github.com/pxsenmaster-coder/polox-ai-domestic.git
-cd polox_ai
+cd polox-ai-domestic
 pnpm i
 pnpm dev
 ```

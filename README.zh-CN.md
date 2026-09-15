@@ -66,7 +66,7 @@ PoloX 基于 Nuxt、Vue 和 SQLite 在本地运行。使用自己的 OpenRouter�
 
 ```sh
 git clone https://github.com/pxsenmaster-coder/polox-ai-domestic.git
-cd polox_ai
+cd polox-ai-domestic
 pnpm i
 pnpm dev
 ```

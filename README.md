@@ -36,7 +36,7 @@
 
 This is the open-source edition of [PoloX AI](https://polox.ai), a creative platform in the same space as [Lovart](https://lovart.ai) and [Crepal](https://crepal.ai). PoloX takes an **agent-native** approach: agent conversations and an infinite canvas bring creation, generation, and editing into one continuous workflow. Describe what you want, work with the agent, and refine the results on the canvas.
 
-PoloX runs locally with Nuxt, Vue, and SQLite. Bring your own OpenRouter and fal API keys; no PoloX account or subscription is required. Projects, conversations, generation history, and media are stored on your machine. AI inference uses external providers, so relevant inputs are sent to those services and their API charges apply.
+PoloX runs locally with Nuxt, Vue, and SQLite. Bring your own OpenRouter, DeepSeek, or Xiaomi MiMo LLM key, plus a fal or Volcengine Ark image-generation key; no PoloX account or subscription is required. Projects, conversations, generation history, and media are stored on your machine. AI inference uses external providers, so relevant inputs are sent to those services and their API charges apply.
 
 ## Install with Codex
 

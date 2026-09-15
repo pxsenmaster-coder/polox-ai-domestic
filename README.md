@@ -24,6 +24,14 @@
 
 ![PoloX AI animation project with agent generation details and a hand-drawn video on the canvas](docs/images/polox-ai-animation-workspace.png)
 
+<div style="overflow-x: auto; white-space: nowrap; max-width: 100%; margin: 1rem 0 1.5rem; padding-bottom: 0.5rem;">
+  <img src="docs/images/polox-readme-01-hero.jpeg" alt="PoloX AI — The agent-native creative platform" height="280" style="display: inline-block; margin-right: 8px; border-radius: 8px;" />
+  <img src="docs/images/polox-readme-02-unified-space.jpeg" alt="PoloX AI — One unified space for agent chat and infinite canvas" height="280" style="display: inline-block; margin-right: 8px; border-radius: 8px;" />
+  <img src="docs/images/polox-readme-03-skills.jpeg" alt="PoloX AI skills — Sketch to Image, Image Text Editor, Layer Splitter, Product Hunt gallery" height="280" style="display: inline-block; margin-right: 8px; border-radius: 8px;" />
+  <img src="docs/images/polox-readme-04-models.jpeg" alt="PoloX AI — Latest AI image and video models in one workspace" height="280" style="display: inline-block; margin-right: 8px; border-radius: 8px;" />
+  <img src="docs/images/polox-readme-05-utilities.jpeg" alt="PoloX AI — Everyday utilities for images and videos" height="280" style="display: inline-block; border-radius: 8px;" />
+ </div>
+
 ## Introduction
 
 This is the open-source edition of [PoloX AI](https://polox.ai), a creative platform in the same space as [Lovart](https://lovart.ai) and [Crepal](https://crepal.ai). PoloX takes an **agent-native** approach: agent conversations and an infinite canvas bring creation, generation, and editing into one continuous workflow. Describe what you want, work with the agent, and refine the results on the canvas.

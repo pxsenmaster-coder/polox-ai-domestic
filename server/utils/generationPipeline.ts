@@ -3,6 +3,7 @@ import type { StoredDocument } from './sqlite'
 import { GENERATION_ACTIVE_STATES } from '../../shared/types/generation'
 import { GenerationJob } from '../models/generationJob'
 import { syncAgentRuntimeFromJob } from './agentSessionRuntime'
+import { syncJobFromArk } from './arkGenerate'
 import { syncJobFromFal } from './falGenerate'
 import { dispatchQueuedJobs, startPendingProviderJob } from './generationQueue'
 import { mergeSourceUrls } from './generationResults'
@@ -68,7 +69,7 @@ function isVideoJob(job: IGenerationJob) {
     || model.startsWith('wan/')
 }
 async function syncProviderJob(job: GenerationJobDocument) {
-  return syncJobFromFal(job)
+  return job.provider === 'ark' ? syncJobFromArk(job) : syncJobFromFal(job)
 }
 function pendingAssets(job: IGenerationJob) {
   return (job.resultAssets || []).filter(asset => !(asset.status === 'uploaded' && asset.localUrl && isStoredMediaUrl(asset.localUrl)))

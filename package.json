@@ -51,7 +51,8 @@
     "format": "eslint --fix .",
     "release": "release-it",
     "test:sqlite": "node --experimental-transform-types --test scripts/test-sqlite.mjs scripts/test-agent-history.mjs scripts/test-local-data-migration.mjs scripts/test-local-generation-queue.mjs",
-    "test:media": "node --experimental-transform-types --test scripts/test-local-media.mjs scripts/test-agent-upload.mjs scripts/test-image-text-editor.mjs scripts/test-media-export.mjs"
+    "test:media": "node --experimental-transform-types --test scripts/test-local-media.mjs scripts/test-agent-upload.mjs scripts/test-image-text-editor.mjs scripts/test-media-export.mjs",
+    "test:ark": "node --test scripts/test-ark-models.mjs"
   },
   "dependencies": {
     "@fal-ai/client": "^1.10.1",

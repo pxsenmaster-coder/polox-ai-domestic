@@ -1,6 +1,7 @@
 import type { AiCategory, AiModelConfig, AiTask, SchemaProperty } from '../types/aiModel'
 import { FLUX_3_ASPECT_RATIOS, FLUX_3_DURATIONS, FLUX_3_I2V_MODEL, FLUX_3_RESOLUTIONS, FLUX_3_T2V_MODEL } from '~~/shared/utils/flux3'
 import { IDEOGRAM_REMOVE_BACKGROUND_MAX_BYTES, IDEOGRAM_REMOVE_BACKGROUND_MODEL } from '~~/shared/utils/ideogram'
+import { ARK_SEEDREAM_I2I_MODEL, ARK_SEEDREAM_T2I_MODEL, arkFormSchema } from '../utils/arkSeedream'
 import { falFormSchema } from '../utils/falSchema'
 
 export const AI_CATEGORIES: AiCategory[] = ['Image', 'Video']
@@ -84,6 +85,24 @@ const FLUX_3_LAST_FRAME: SchemaProperty = {
 }
 
 export const AI_MODELS: AiModelConfig[] = [
+  {
+    id: ARK_SEEDREAM_T2I_MODEL,
+    name: 'Seedream 5.0 Pro · 火山方舟',
+    category: 'Image',
+    task: 'Text to Image',
+
+    icon: 'lucide:image',
+    schema: arkFormSchema(ARK_SEEDREAM_T2I_MODEL),
+  },
+  {
+    id: ARK_SEEDREAM_I2I_MODEL,
+    name: 'Seedream 5.0 Pro · 火山方舟',
+    category: 'Image',
+    task: 'Image to Image',
+
+    icon: 'lucide:images',
+    schema: arkFormSchema(ARK_SEEDREAM_I2I_MODEL),
+  },
   {
     id: 'seedream/5-pro-text-to-image',
     name: 'Seedream 5.0 Pro',
@@ -383,6 +402,7 @@ export const AI_MODELS: AiModelConfig[] = [
 
 export const MODEL_COMPANIES: Record<string, string> = {
   'Seedream 5.0 Pro': 'ByteDance',
+  'Seedream 5.0 Pro · 火山方舟': 'ByteDance',
   'GPT Image 2': 'OpenAI',
   'Nano Banana 2': 'Google',
   'Nano Banana 2 Lite': 'Google',

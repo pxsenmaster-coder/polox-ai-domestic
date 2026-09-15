@@ -2,12 +2,12 @@ import type { IGenerationJob } from '../models/generationJob'
 import type { StoredDocument } from './sqlite'
 import { AGENT_CONCAT_MODEL } from '~~/shared/utils/agentConcat'
 import { AGENT_MODELS } from '~~/shared/utils/agentModels'
+import { isArkGenerateModel } from '~~/shared/utils/arkSeedream'
 import { IDEOGRAM_REMOVE_BACKGROUND_MODEL } from '~~/shared/utils/ideogram'
 import { GENERATION_ACTIVE_STATES } from '../../shared/types/generation'
 import { GenerationJob } from '../models/generationJob'
 import { agentResultTaskId, httpUrlList } from './agentJobs'
 import { syncAgentRuntimeFromJob } from './agentSessionRuntime'
-import { isFalGenerateModel } from './falGenerate'
 import { generationConcurrency } from './generationConcurrency'
 import { countActiveGenerationJobs, dispatchQueuedJobs } from './generationQueue'
 import { resolveProject } from './projects'
@@ -127,7 +127,7 @@ export async function acquireAgentSlot(input: {
   const registered = input.modelId ? AGENT_MODELS.find(model => model.id === input.modelId) : undefined
   if (input.modelId && !registered)
     throw new Error('Unknown Agent model')
-  const meta = registered ? { model: registered.id, category: registered.category, task: registered.task, provider: 'fal' as const } : modelMeta(kind, stills[0] || sourceUrl, videoMode, String(input.videoFamily || ''))
+  const meta = registered ? { model: registered.id, category: registered.category, task: registered.task, provider: isArkGenerateModel(registered.id) ? 'ark' as const : 'fal' as const } : modelMeta(kind, stills[0] || sourceUrl, videoMode, String(input.videoFamily || ''))
   const prompt = String(input.prompt || '').trim()
   let inputPayload: Record<string, unknown> = {
     prompt,

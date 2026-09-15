@@ -12,7 +12,7 @@ export interface IResultAsset {
 }
 export interface IGenerationJob {
   projectId: string
-  provider: 'fal'
+  provider: 'fal' | 'ark'
   model: string
   category: string
   task: string

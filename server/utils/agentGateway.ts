@@ -1,8 +1,8 @@
-import { publicServiceStatus } from './serviceSettings'
 import type { H3Event } from 'h3'
 import { setHeader } from 'h3'
 import { snapshotAgentChatFromService } from './agentChats'
 import { assertAgentRateLimit, beginAgentIdempotency, beginAgentTurn } from './agentRateLimit'
+import { publicServiceStatus } from './serviceSettings'
 
 const ARCHIVE_SNAPSHOT_MS = 8000
 function agentPath(event: H3Event) {
@@ -191,7 +191,7 @@ export async function proxyAgentRequest(event: H3Event) {
   const path = agentPath(event)
   const method = event.method.toUpperCase()
   if (method === 'POST' && path === '/v1/chat' && !publicServiceStatus().connected) {
-    throw createError({ statusCode: 503, statusMessage: 'Configure and test OpenRouter and fal before sending a message.', data: { code: 'SERVICES_NOT_CONNECTED' } })
+    throw createError({ statusCode: 503, statusMessage: 'Configure and test a language model (OpenRouter, DeepSeek or MiMo) and at least one image provider (fal or Ark) before sending a message.', data: { code: 'SERVICES_NOT_CONNECTED' } })
   }
   const confirmMatch = path.match(/^\/v1\/sessions\/([^/]+)\/confirm$/)
   const choiceMatch = path.match(/^\/v1\/sessions\/([^/]+)\/choice$/)

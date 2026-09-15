@@ -97,14 +97,14 @@ ffprobe -version
 
 Restart the development server after installing these tools.
 
-## Connect OpenRouter and fal
+## Connect a language model and an image provider
 
 1. Start PoloX and click the red **API keys not configured** indicator in the top-right corner.
-2. In the **Service connection** dialog, use the **Get API key** links to obtain your [OpenRouter key](https://openrouter.ai/workspaces/default/keys) and [fal key](https://fal.ai/login?returnTo=%2Fdashboard%2Fkeys).
-3. Paste each key into its corresponding field and click **Test connection**.
-4. Once both tests pass, the indicator turns green and reads **Services connected**. You are ready to create.
+2. In the **Service connection** dialog, choose a language model provider: OpenRouter, [DeepSeek direct](https://platform.deepseek.com/api_keys), or [Xiaomi MiMo direct](https://platform.xiaomimimo.com/console/api-keys).
+3. Paste the selected language-model API key. For image generation, configure either a [fal key](https://fal.ai/login?returnTo=%2Fdashboard%2Fkeys) or a Volcengine Ark key (one is enough).
+4. Click **Test connection**. Once the language model and at least one image provider pass, the indicator turns green and reads **Services connected**. You are ready to create.
 
-The default agent model is **DeepSeek V4 Flash Vision Exp** (`deepseek/deepseek-v4-flash-vision-exp`), which has worked well in the maintainer's testing. You can change the OpenRouter model in the same dialog. Connection testing sends a short model request and may incur a small API charge.
+For direct DeepSeek, use **DeepSeek V4 Flash Vision Exp** (`deepseek-v4-flash-vision-exp`) when image understanding is needed. MiMo defaults to `mimo-v2.5-pro`. You can change the Base URL and model ID in the same dialog. MiMo Token Plan users can replace the Base URL with the dedicated endpoint shown in the MiMo console. Connection testing sends a short model request and may incur a small API charge.
 
 ## Available AI models
 

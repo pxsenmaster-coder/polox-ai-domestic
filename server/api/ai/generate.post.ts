@@ -1,5 +1,7 @@
+import { arkRequestModel } from '~~/shared/utils/arkSeedream'
 import { isImageLayerSplitterModel } from '~~/shared/utils/imageLayerSplitter'
 import { GenerationJob } from '../../models/generationJob'
+import { isArkModel } from '../../utils/arkGenerate'
 import { isFalGenerateModel } from '../../utils/falGenerate'
 import { falEndpoint } from '../../utils/falInput'
 import { sanitizeGenerateInput } from '../../utils/generateInput'
@@ -7,6 +9,7 @@ import { dispatchQueuedJobs, newLocalTaskId } from '../../utils/generationQueue'
 import { toPublicJob } from '../../utils/generationResults'
 import { toPublicApiError } from '../../utils/httpError'
 import { resolveProject } from '../../utils/projects'
+import { readServiceSettings } from '../../utils/serviceSettings'
 import { connectDatabase } from '../../utils/sqlite'
 
 export default defineEventHandler(async (event) => {
@@ -19,7 +22,8 @@ export default defineEventHandler(async (event) => {
   }>(event)
   const model = String(body?.model || '').trim()
   const useFal = isFalGenerateModel(model)
-  if (!useFal) {
+  const useArk = isArkModel(model)
+  if (!useFal && !useArk) {
     throw createError({
       statusCode: 400,
       statusMessage: 'This model is not available for generation yet',
@@ -29,11 +33,14 @@ export default defineEventHandler(async (event) => {
   const input = sanitizeGenerateInput(model, rawInput)
   await connectDatabase()
   const project = await resolveProject(body?.projectId)
-  const requestBody = { model: falEndpoint(model, input), input }
+  const requestBody = {
+    model: useArk ? arkRequestModel(model, readServiceSettings().arkModel) : falEndpoint(model, input),
+    input,
+  }
   try {
     const job = await GenerationJob.create({
       projectId: String(project._id),
-      provider: 'fal',
+      provider: useArk ? 'ark' : 'fal',
       model,
       category: (isImageLayerSplitterModel(model) ? 'Tools' : String(body?.category || '')),
       task: (isImageLayerSplitterModel(model) ? 'Split Image Layers' : String(body?.task || '')),

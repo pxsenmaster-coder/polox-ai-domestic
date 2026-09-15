@@ -97,14 +97,14 @@ ffprobe -version
 
 安装完成后，请重新启动开发服务。
 
-## 获取并配置 OpenRouter 和 fal API Key
+## 获取并配置大模型和图片生成 API Key
 
 1. 启动 PoloX，点击右上角红色的 **API keys not configured**（尚未配置 API Key）提示。
-2. 在 **Service connection**（服务连接）弹窗中，通过 **Get API key** 链接获取 [OpenRouter Key](https://openrouter.ai/workspaces/default/keys) 和 [fal Key](https://fal.ai/login?returnTo=%2Fdashboard%2Fkeys)。
-3. 将两个 Key 分别填入对应输入框，点击 **Test connection**（连通测试）。
-4. 两项测试通过后，提示会变为绿色的 **Services connected**（服务已连接），即可开始创作。
+2. 在 **Service connection**（服务连接）弹窗中选择一个大模型服务：OpenRouter、[DeepSeek 直连](https://platform.deepseek.com/api_keys) 或 [小米 MiMo 直连](https://platform.xiaomimimo.com/console/api-keys)。
+3. 填入所选大模型 API Key。图片生成端至少配置 [fal Key](https://fal.ai/login?returnTo=%2Fdashboard%2Fkeys) 或火山方舟 Ark Key（二选一即可）。
+4. 点击 **Test connection**（连通测试）。大模型和至少一个图片服务测试通过后，提示会变为绿色的 **Services connected**（服务已连接），即可开始创作。
 
-默认 Agent 模型为 **DeepSeek V4 Flash Vision Exp**（`deepseek/deepseek-v4-flash-vision-exp`），在维护者的测试中表现良好。你可以在同一弹窗中修改 OpenRouter 模型。连通测试会发送一次简短的模型请求，可能产生少量 API 费用。
+DeepSeek 直连推荐使用支持图片理解的 **DeepSeek V4 Flash Vision Exp**（`deepseek-v4-flash-vision-exp`）；MiMo 默认使用 `mimo-v2.5-pro`。你可以在同一弹窗中修改 Base URL 和模型 ID。连通测试会发送一次简短的模型请求，可能产生少量 API 费用。MiMo Token Plan 用户可把 Base URL 改为控制台提供的专属地址。
 
 ## 已接入的 AI 模型
 

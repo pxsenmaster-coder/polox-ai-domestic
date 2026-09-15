@@ -1,9 +1,9 @@
 import type { GenerationJobPublic } from '../../shared/types/generation'
 import { AGENT_CONCAT_MODEL, isConcatenatedPrompt, isConcatVideoMode } from '~~/shared/utils/agentConcat'
 import { AGENT_MODELS } from '~~/shared/utils/agentModels'
+import { isArkGenerateModel } from '~~/shared/utils/arkSeedream'
 import { IDEOGRAM_REMOVE_BACKGROUND_MODEL } from '~~/shared/utils/ideogram'
 import { GenerationJob } from '../models/generationJob'
-import { isFalGenerateModel } from './falGenerate'
 import { toPublicJob } from './generationResults'
 import { resolveProject } from './projects'
 import { connectDatabase } from './sqlite'
@@ -51,7 +51,7 @@ function isConcatItem(item: AgentResultItem) {
 function modelFor(item: AgentResultItem) {
   const selected = AGENT_MODELS.find(model => model.id === item.modelId)
   if (selected)
-    return { provider: 'fal' as const, model: selected.id, category: selected.category, task: selected.task }
+    return { provider: isArkGenerateModel(selected.id) ? 'ark' as const : 'fal' as const, model: selected.id, category: selected.category, task: selected.task }
   if (item.kind === 'cutout') {
     return {
       provider: 'fal' as const,

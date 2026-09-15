@@ -1,8 +1,12 @@
 import type { ChatMessage, ToolCall } from './types'
+import { Buffer } from 'node:buffer'
 import { falReadableUrl } from '../utils/falFiles'
+import { llmAuthHeaders, llmChatCompletionsUrl, llmProviderPreset } from '../utils/llmProviders'
+import { readStoredMedia } from '../utils/localMedia'
+import { readServiceSettings } from '../utils/serviceSettings'
 import { agentEnv } from './env'
 
-const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions'
+const MAX_INLINE_IMAGE_BYTES = 24 * 1024 * 1024
 
 export interface StreamDelta {
   content?: string
@@ -36,15 +40,48 @@ interface OpenRouterChunk {
   error?: { message?: string }
 }
 
+async function providerImageUrl(url: string) {
+  const local = await readStoredMedia(url, MAX_INLINE_IMAGE_BYTES)
+  // fal remains the preferred CDN hand-off when configured. When it is not
+  // configured, send local uploads as data URLs so DeepSeek/MiMo can still
+  // inspect user images without requiring a second paid provider.
+  if (!local) {
+    return url
+  }
+  if (readServiceSettings().falKey) {
+    return falReadableUrl(url)
+  }
+  return `data:${local.mime};base64,${Buffer.from(local.bytes).toString('base64')}`
+}
+
 async function providerMessages(messages: ChatMessage[]) {
   return Promise.all(messages.map(async ({ historyId: _historyId, internal: _internal, ...message }) => {
-    if (!Array.isArray(message.content)) return message
+    if (!Array.isArray(message.content))
+      return message
     const content = await Promise.all(message.content.map(async (part) => {
-      if (part.type !== 'image_url') return part
-      return { ...part, image_url: { ...part.image_url, url: await falReadableUrl(part.image_url.url) } }
+      if (part.type !== 'image_url')
+        return part
+      return { ...part, image_url: { ...part.image_url, url: await providerImageUrl(part.image_url.url) } }
     }))
     return { ...message, content }
   }))
+}
+
+function providerHeaders() {
+  const settings = readServiceSettings()
+  const headers: Record<string, string> = {
+    ...llmAuthHeaders(settings.llmProvider, agentEnv.llmApiKey),
+    'Content-Type': 'application/json',
+  }
+  if (settings.llmProvider === 'openrouter') {
+    headers['HTTP-Referer'] = 'https://polox.ai'
+    headers['X-Title'] = 'PoloX Agent Lab'
+  }
+  return { settings, headers }
+}
+
+function providerErrorLabel() {
+  return llmProviderPreset(readServiceSettings().llmProvider).label
 }
 
 export async function completeText(options: {
@@ -53,28 +90,24 @@ export async function completeText(options: {
   temperature?: number
   maxTokens?: number
 }) {
-  const response = await fetch(OPENROUTER_URL, {
+  const { settings, headers } = providerHeaders()
+  const response = await fetch(llmChatCompletionsUrl(settings.llmProvider, settings.llmBaseUrl), {
     method: 'POST',
     signal: options.signal,
-    headers: {
-      'Authorization': `Bearer ${agentEnv.openRouterApiKey}`,
-      'Content-Type': 'application/json',
-      'HTTP-Referer': 'https://polox.ai',
-      'X-Title': 'PoloX Agent Lab',
-    },
+    headers,
     body: JSON.stringify({
-      model: agentEnv.model,
+      model: settings.llmModel,
       temperature: options.temperature ?? 0.2,
       stream: false,
-      reasoning: { enabled: false },
-      max_tokens: options.maxTokens ?? 32,
+      ...(settings.llmProvider === 'openrouter' ? { reasoning: { enabled: false } } : {}),
+      ...(settings.llmProvider === 'mimo' ? { max_completion_tokens: options.maxTokens ?? 32 } : { max_tokens: options.maxTokens ?? 32 }),
       messages: await providerMessages(options.messages),
     }),
   })
 
   if (!response.ok) {
     const text = await response.text().catch(() => '')
-    throw new Error(text || `OpenRouter request failed (${response.status})`)
+    throw new Error(text || `${providerErrorLabel()} request failed (${response.status})`)
   }
 
   const payload = await response.json() as {
@@ -94,34 +127,31 @@ export async function streamChat(options: {
   signal?: AbortSignal
   onDelta: (delta: StreamDelta) => void
 }) {
-  const response = await fetch(OPENROUTER_URL, {
+  const { settings, headers } = providerHeaders()
+  const response = await fetch(llmChatCompletionsUrl(settings.llmProvider, settings.llmBaseUrl), {
     method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${agentEnv.openRouterApiKey}`,
-      'Content-Type': 'application/json',
-      'HTTP-Referer': 'https://polox.ai',
-      'X-Title': 'PoloX Agent Lab',
-    },
+    headers,
     body: JSON.stringify({
-      model: agentEnv.model,
+      model: settings.llmModel,
       temperature: 0.4,
       stream: true,
-      reasoning: { enabled: false },
+      ...(settings.llmProvider === 'openrouter' ? { reasoning: { enabled: false } } : {}),
       messages: await providerMessages(options.messages),
       tools: options.tools,
       tool_choice: options.disableTools ? 'none' : options.requiredTool ? { type: 'function', function: { name: options.requiredTool } } : 'auto',
       parallel_tool_calls: !options.requiredTool,
+      ...(settings.llmProvider === 'mimo' ? { max_completion_tokens: 4096 } : {}),
     }),
     signal: options.signal,
   })
 
   if (!response.ok) {
     const text = await response.text().catch(() => '')
-    throw new Error(text || `OpenRouter request failed (${response.status})`)
+    throw new Error(text || `${providerErrorLabel()} request failed (${response.status})`)
   }
 
   if (!response.body)
-    throw new Error('OpenRouter returned an empty stream')
+    throw new Error(`${providerErrorLabel()} returned an empty stream`)
 
   const reader = response.body.getReader()
   const decoder = new TextDecoder()

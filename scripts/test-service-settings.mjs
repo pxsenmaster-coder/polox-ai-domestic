@@ -8,13 +8,37 @@ import ts from 'typescript'
 const require = createRequire(import.meta.url)
 function load(file, mocks = {}, globals = {}) {
  const module = { exports: {} }
+ const defaultLlmProviders = {
+  LLM_PROVIDER_PRESETS: {
+   openrouter: {label:'OpenRouter',baseUrl:'https://openrouter.ai/api/v1',model:'deepseek/deepseek-v4-flash-vision-exp'},
+   deepseek: {label:'DeepSeek 直连',baseUrl:'https://api.deepseek.com',model:'deepseek-v4-flash-vision-exp'},
+   mimo: {label:'小米 MiMo 直连',baseUrl:'https://api.xiaomimimo.com/v1',model:'mimo-v2.5-pro'},
+  },
+  normalizeLlmProvider: value => value === 'deepseek' || value === 'mimo' || value === 'openrouter' ? value : 'openrouter',
+  llmProviderPreset: provider => defaultLlmProviders.LLM_PROVIDER_PRESETS[provider],
+  llmChatCompletionsUrl: (_provider, baseUrl) => `${baseUrl.replace(/\/$/, '')}/chat/completions`,
+  llmAuthHeaders: (provider, key) => provider === 'mimo' ? {'api-key':key} : {Authorization:`Bearer ${key}`},
+ }
  const code = ts.transpileModule(readFileSync(new URL(`../server/utils/${file}.ts`, import.meta.url), 'utf8'), {compilerOptions:{module:ts.ModuleKind.CommonJS, esModuleInterop:true, target:ts.ScriptTarget.ES2022}}).outputText
- vm.runInNewContext(code, { module, exports:module.exports, require:id => id in mocks ? mocks[id] : require(id), File, atob, AbortSignal, setTimeout, clearTimeout, ...globals })
+ vm.runInNewContext(code, { module, exports:module.exports, require:id => id in mocks ? mocks[id] : id === './llmProviders' || id === '../../shared/utils/llmProviders' ? defaultLlmProviders : require(id), File, atob, AbortSignal, URL, setTimeout, clearTimeout, ...globals })
  return module.exports
 }
 function harness() {
  const db = new DatabaseSync(':memory:')
- const settings = load('serviceSettings', {'./sqlite':{connectDatabase:()=>db}})
+ const llmProviders = {
+  LLM_PROVIDER_PRESETS: {
+   openrouter: {label:'OpenRouter',baseUrl:'https://openrouter.ai/api/v1',model:'deepseek/deepseek-v4-flash-vision-exp'},
+   deepseek: {label:'DeepSeek 直连',baseUrl:'https://api.deepseek.com',model:'deepseek-v4-flash-vision-exp'},
+   mimo: {label:'小米 MiMo 直连',baseUrl:'https://api.xiaomimimo.com/v1',model:'mimo-v2.5-pro'},
+  },
+  normalizeLlmProvider: value => value === 'deepseek' || value === 'mimo' || value === 'openrouter' ? value : 'openrouter',
+  llmProviderPreset: provider => llmProviders.LLM_PROVIDER_PRESETS[provider],
+ }
+ const settings = load('serviceSettings', {
+  './sqlite': {connectDatabase:()=>db},
+  './llmProviders': llmProviders,
+  '../../shared/utils/arkSeedream': {DEFAULT_ARK_BASE_URL:'https://ark.cn-beijing.volces.com/api/v3', DEFAULT_ARK_SEEDREAM_MODEL:'doubao-seedream-5-0-pro-260628'},
+ })
  return {db, settings}
 }
 test('settings are local, omitted passwords preserve saved keys, and public status never exposes secrets', () => {
@@ -85,5 +109,58 @@ test('clearing a saved key deletes it and invalidates connection approval', () =
  assert.equal(s.publicServiceStatus().falConfigured,false)
  s.updateServiceSettings({openRouterKey:'  '})
  assert.equal(s.readServiceSettings().openRouterKey,'')
+ db.close()
+})
+
+test('Ark can be the only image provider and is checked without a generation request', async () => {
+ const {db,settings:s}=harness()
+ const saved=s.updateServiceSettings({openRouterKey:'openrouter-key',openRouterModel:'provider/model',arkApiKey:'ark-key',arkModel:'seedream-5-pro'})
+ const api=load('serviceConnection',{'./serviceSettings':s,'@fal-ai/client':{createFalClient:()=>({})}}, {fetch:async(url,init)=>{
+  if(url.includes('openrouter')) return {ok:true,status:200,json:async()=>({choices:[{message:{content:'OK'}}]})}
+  if(url.endsWith('/models')) { assert.equal(init.headers.Authorization,'Bearer ark-key'); return {ok:true,status:200} }
+  throw new Error(`unexpected request: ${url}`)
+ }})
+ const result=await api.testServiceConnections(saved)
+ assert.equal(result.ark.ok,true)
+ assert.equal(result.connected,true)
+ assert.equal(result.fal.ok,false)
+ db.close()
+})
+
+test('DeepSeek direct provider uses its OpenAI-compatible endpoint', async () => {
+ const {db,settings:s}=harness()
+ const saved=s.updateServiceSettings({llmProvider:'deepseek',llmApiKey:'deepseek-key',llmModel:'deepseek-v4-flash-vision-exp',arkApiKey:'ark-key'})
+ const api=load('serviceConnection',{'./serviceSettings':s,'@fal-ai/client':{}}, {fetch:async(url,init)=>{
+  if(url.includes('api.deepseek.com')) {
+   assert.equal(init.headers.Authorization,'Bearer deepseek-key')
+   assert.equal(JSON.parse(init.body).model,'deepseek-v4-flash-vision-exp')
+   return {ok:true,status:200,json:async()=>({choices:[{message:{content:'OK'}}]})}
+  }
+  if(url.endsWith('/models')) return {ok:true,status:200}
+  throw new Error(`unexpected request: ${url}`)
+ }})
+ const result=await api.testServiceConnections(saved)
+ assert.equal(result.llm.ok,true)
+ assert.equal(result.connected,true)
+ db.close()
+})
+
+test('MiMo direct provider uses api-key authentication and completion token field', async () => {
+ const {db,settings:s}=harness()
+ const saved=s.updateServiceSettings({llmProvider:'mimo',llmApiKey:'mimo-key',llmModel:'mimo-v2.5-pro',arkApiKey:'ark-key'})
+ const api=load('serviceConnection',{'./serviceSettings':s,'@fal-ai/client':{}}, {fetch:async(url,init)=>{
+  if(url.includes('xiaomimimo.com')) {
+   assert.equal(init.headers['api-key'],'mimo-key')
+   const body=JSON.parse(init.body)
+   assert.equal(body.model,'mimo-v2.5-pro')
+   assert.equal(body.max_completion_tokens,8)
+   return {ok:true,status:200,json:async()=>({choices:[{message:{content:'OK'}}]})}
+  }
+  if(url.endsWith('/models')) return {ok:true,status:200}
+  throw new Error(`unexpected request: ${url}`)
+ }})
+ const result=await api.testServiceConnections(saved)
+ assert.equal(result.llm.ok,true)
+ assert.equal(result.connected,true)
  db.close()
 })

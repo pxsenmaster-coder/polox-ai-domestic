@@ -1,6 +1,7 @@
 import type { AgentSession } from './session'
 import type { AgentEvent, AgentImage } from './types'
 import { AGENT_MODELS, findAgentModelTool, readModelMentions, validateAgentModelInput } from '~~/shared/utils/agentModels'
+import { arkRequestModel, isArkGenerateModel } from '~~/shared/utils/arkSeedream'
 import { textEditPrompt } from '~~/shared/utils/imageTextEditor'
 import { GenerationJob } from '../models/generationJob'
 import { falEndpoint } from '../utils/falInput'
@@ -92,7 +93,7 @@ export async function prepareModelGeneration(tool: string, json: string, session
     modelId: model.id,
     name: String(raw._name || model.name).slice(0, 100),
     input,
-    requestModel: falEndpoint(model.id, input),
+    requestModel: isArkGenerateModel(model.id) ? arkRequestModel(model.id) : falEndpoint(model.id, input),
 
     uncertainFields: Array.isArray(raw._uncertain_fields) ? raw._uncertain_fields.filter((key: unknown) => typeof key === 'string' && key in model.schema.components.schemas.Input.properties) : [],
     inputUrls: Object.entries(input).filter(([key]) => key.includes('url') || model.schema.components.schemas.Input.properties[key]?.['x-ui-component'] === 'uploaders').flatMap(([, value]) => Array.isArray(value) ? value : [value]).filter((value): value is string => typeof value === 'string' && /^https?:\/\//i.test(value)),

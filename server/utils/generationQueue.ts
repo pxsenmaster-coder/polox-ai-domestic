@@ -3,6 +3,7 @@ import type { StoredDocument } from './sqlite'
 import { readErrorMessage } from '~~/shared/utils/apiError'
 import { GENERATION_ACTIVE_STATES } from '../../shared/types/generation'
 import { GenerationJob } from '../models/generationJob'
+import { createArkTask } from './arkGenerate'
 import { createFalTask } from './falGenerate'
 import { generationConcurrency } from './generationConcurrency'
 import { isProviderStarted } from './generationJobs'
@@ -32,7 +33,8 @@ async function failUnstartedJob(job: GenerationJobDocument, error: unknown) {
   return job
 }
 async function startProviderTask(job: GenerationJobDocument) {
-  if (job.provider && job.provider !== 'fal') return failUnstartedJob(job, new Error('This task belongs to a retired provider. Please generate again.'))
+  if (job.provider && job.provider !== 'fal' && job.provider !== 'ark')
+    return failUnstartedJob(job, new Error('This task belongs to a retired provider. Please generate again.'))
   const original = asRecord(job.originalRequest)
   if (original?.source === 'agent' && original?.holdSlot === true) {
     if (job.state === 'queued' || job.state === 'waiting' || job.state === 'queuing') {
@@ -47,6 +49,21 @@ async function startProviderTask(job: GenerationJobDocument) {
   const requestBody = asRecord(job.requestBody) || {}
   // Ignore legacy text-compositing metadata on already persisted jobs.
   const { _textEdit, ...input } = job.input && typeof job.input === 'object' ? job.input : {}
+  if (job.provider === 'ark') {
+    const arkTask = await createArkTask(String(job.model || '').trim(), input)
+    job.providerTaskId = arkTask.requestId
+    job.requestBody = {
+      ...requestBody,
+      ...arkTask.requestBody,
+    }
+    job.resultJson = JSON.stringify(arkTask.payload)
+    job.resultUrls = arkTask.urls
+    job.sourceUrls = arkTask.urls
+    job.state = 'archiving'
+    job.lastSyncAt = new Date()
+    await job.save()
+    return job
+  }
   {
     const falModel = String(requestBody.model || job.model || '').trim()
     const falTask = await createFalTask(falModel, input)
@@ -61,7 +78,6 @@ async function startProviderTask(job: GenerationJobDocument) {
     await job.save()
     return job
   }
-
 }
 async function dispatchOnce() {
   const limit = await generationConcurrency()

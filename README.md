@@ -152,7 +152,7 @@ If you find a bug or an improvement that would help other users, please [open an
 
 ## Local data
 
-PoloX stores its SQLite database at `.data/polox.sqlite` and media under `.data/media`. Back up the entire `.data` directory with the server stopped to preserve your projects and files. API keys are stored in the local database, so keep backups private.
+PoloX stores its SQLite database at `.data/polox.sqlite` and media under `.data/media`. Back up the entire `.data` directory with the server stopped to preserve your projects, asset libraries, and files. API keys are stored in the local database, so keep backups private.
 
 This edition is intended for local use. Its workspace routes do not require authentication; keep the app on your machine or a private network.
 

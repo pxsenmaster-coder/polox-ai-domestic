@@ -152,7 +152,7 @@ DeepSeek 直连推荐使用支持图片理解的 **DeepSeek V4 Flash Vision Exp*
 
 ## 本地数据
 
-SQLite 数据库保存在 `.data/polox.sqlite`，媒体文件保存在 `.data/media`。请停止服务后备份整个 `.data` 目录，以保留项目和文件。API Key 也保存在本地数据库中，请妥善保管备份。
+SQLite 数据库保存在 `.data/polox.sqlite`，媒体文件保存在 `.data/media`。请停止服务后备份整个 `.data` 目录，以保留项目、资源库和文件。API Key 也保存在本地数据库中，请妥善保管备份。
 
 本版本面向本地使用，工作区接口无需身份验证，请在本机或私有网络中运行。
 

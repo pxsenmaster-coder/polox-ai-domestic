@@ -620,6 +620,19 @@ function parseAskOption(raw: unknown, index: number, seen: Set<string>): ChoiceO
   }
 }
 
+
+function formatLayerSplitConfirmPrompt(prompt: string) {
+  const text = prompt.replace(/\r\n/g, '\n').trim()
+  if (!text || /\n\s*Box\s+\d+/i.test(text))
+    return text
+  // Split packed "Box 1 ... Box 2 ..." prose onto separate lines for the confirm card.
+  const withBreaks = text
+    .replace(/\s*(Box\s+\d+\b)/gi, '\n$1')
+    .replace(/^\n+/, '')
+    .replace(/\n{3,}/g, '\n\n')
+  return withBreaks.trim()
+}
+
 function parseAskQuestion(raw: unknown, index: number, seen: Set<string>): ChoiceQuestion | null {
   if (!raw || typeof raw !== 'object')
     return null
@@ -645,6 +658,7 @@ function parseAskQuestion(raw: unknown, index: number, seen: Set<string>): Choic
   const title = clipAsk(row.title, 80)
   const recommendedRaw = clipAsk(row.recommended ?? row.recommended_id ?? row.recommendedId, 64)
   const recommendedId = options.some(item => item.id === recommendedRaw) ? recommendedRaw : undefined
+  const displayPrompt = unique === 'layer_split_confirm' ? formatLayerSplitConfirmPrompt(prompt) : prompt
   return {
     id: unique,
     prompt,

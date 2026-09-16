@@ -6,7 +6,7 @@ import type { CanvasCorner, CanvasGuide, CanvasPoint } from '~/utils/infiniteCan
 import { isGenerationActive } from '~~/shared/types/generation'
 import { assetName, matchingAgentAsset } from '~~/shared/utils/assetName'
 import { isImageLayerSplitterModel } from '~~/shared/utils/imageLayerSplitter'
-import { isMediaVideoUrl } from '~~/shared/utils/seedance25'
+import { isMediaAudioUrl, isMediaVideoUrl } from '~~/shared/utils/seedance25'
 import { byCanvasOrder, CARD_CHROME_HEIGHT, CARD_HEIGHT, CARD_WIDTH, CELL_X, CELL_Y, clampZoom, findFreeRect, fitMediaRect, intersectsSelection, inViewport, isDefaultCanvasGrid, latestCanvasAsset, MAX_PLAYING_VIDEOS, MAX_VISIBLE, resizeFromCorner, snapCanvasRect, zoomAt } from '~/utils/infiniteCanvas'
 
 const props = defineProps<{
@@ -19,6 +19,7 @@ const props = defineProps<{
   loading?: boolean
   emptyMessage?: string
 }>()
+export type CanvasLibraryAsset = { url: string, name: string, kind: 'image' | 'video' | 'audio' }
 const emit = defineEmits<{
   deleteMany: [ids: string[]]
   moveMany: [ids: string[]]
@@ -36,6 +37,7 @@ interface Asset {
   prompt: string
   name: string
   video: boolean
+  audio: boolean
   cutout: boolean
   layerGroup?: boolean
   state: GenerationJobState
@@ -140,6 +142,17 @@ function isLayerEditingAsset(assetId: string) {
 }
 const selection = ref(new Set<string>())
 const selectedAssets = computed(() => assets.value.filter(asset => selection.value.has(asset.id)))
+function toLibraryAsset(asset: Asset): CanvasLibraryAsset | null {
+  if (!asset.url || asset.state !== 'success')
+    return null
+  return {
+    url: asset.url,
+    name: asset.name.replace(/^(Image|Video|Audio) · /, ''),
+    kind: asset.audio ? 'audio' : asset.video ? 'video' : 'image',
+  }
+}
+const libraryBatchAssets = computed(() => selectedAssets.value.map(toLibraryAsset).filter((item): item is CanvasLibraryAsset => Boolean(item)))
+
 const batchIds = computed(() => [...new Set(selectedAssets.value.flatMap(asset => asset.taskId ? [asset.taskId] : []))])
 const deleteIds = computed(() => [...new Set(selectedAssets.value.map(asset => asset.taskId || asset.id))])
 const canBatchDelete = computed(() => selectedAssets.value.every(asset => ['success', 'fail'].includes(asset.state)))
@@ -1308,6 +1321,9 @@ onBeforeUnmount(() => {
           <button v-if="showMove && asset.taskId" class="canvas-action" aria-label="Move to project" @click="emit('move', asset.taskId)">
             <Icon name="i-lucide-folder" />
           </button>
+          <button v-if="asset.url && asset.state === 'success'" class="canvas-action" aria-label="Save to asset library" title="Save to asset library" @click="toLibraryAsset(asset) && emit('saveToLibrary', [toLibraryAsset(asset)!])">
+            <Icon name="i-lucide-library" />
+          </button>
           <button v-if="['success', 'fail'].includes(asset.state)" class="canvas-action" aria-label="Delete result" :disabled="deletingTaskId === (asset.taskId || asset.id)" @click="emit('delete', asset.taskId || asset.id)">
             <Icon name="i-lucide-trash-2" />
           </button>
@@ -1322,6 +1338,9 @@ onBeforeUnmount(() => {
       </button>
       <button class="canvas-action" aria-label="Move selected to project" :disabled="!showMove || batchIds.length === 0 || selectedAssets.some(asset => !asset.taskId)" @click="emit('moveMany', batchIds)">
         <Icon name="i-lucide-folder" />
+      </button>
+      <button class="canvas-action" aria-label="Save selected to asset library" title="Save selected to asset library" :disabled="libraryBatchAssets.length === 0" @click="emit('saveToLibraryMany', libraryBatchAssets)">
+        <Icon name="i-lucide-library" />
       </button>
       <button class="canvas-action" aria-label="Delete selected results" :disabled="!canBatchDelete" @click="emit('deleteMany', deleteIds)">
         <Icon name="i-lucide-trash-2" />

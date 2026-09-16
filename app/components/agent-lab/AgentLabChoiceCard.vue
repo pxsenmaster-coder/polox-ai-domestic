@@ -312,7 +312,7 @@ const resolvedAnswers = computed(() => {
             No source image is available. Upload an image in the chat first.
           </p>
         </section>
-        <section v-if="drawing" class="flex min-w-0 flex-col gap-3" aria-label="Select image layers">
+        <section v-if="drawing && !hideLayerEditor" class="flex min-w-0 flex-col gap-3" aria-label="Select image layers">
           <p class="text-sm text-muted-foreground">
             Draw boxes on each image, then confirm all images together. Your boxes are saved when switching images.
           </p>

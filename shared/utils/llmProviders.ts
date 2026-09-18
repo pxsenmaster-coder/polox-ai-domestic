@@ -1,4 +1,4 @@
-export type LlmProvider = 'openrouter' | 'deepseek' | 'mimo'
+export type LlmProvider = 'openrouter' | 'deepseek' | 'mimo' | 'glm'
 
 export interface LlmProviderPreset {
   label: string
@@ -30,8 +30,15 @@ export const LLM_PROVIDER_PRESETS: Record<LlmProvider, LlmProviderPreset> = {
     keyUrl: 'https://platform.xiaomimimo.com/console/api-keys',
     keyHeader: 'api-key',
   },
+  glm: {
+    label: '智谱 GLM 直连',
+    baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+    model: 'glm-5.3-flash',
+    keyUrl: 'https://bigmodel.cn/usercenter/proj-mgmt/apikeys',
+    keyHeader: 'authorization',
+  },
 }
 
 export function normalizeLlmProvider(value: unknown): LlmProvider {
-  return value === 'deepseek' || value === 'mimo' || value === 'openrouter' ? value : 'openrouter'
+  return value === 'deepseek' || value === 'mimo' || value === 'glm' || value === 'openrouter' ? value : 'openrouter'
 }

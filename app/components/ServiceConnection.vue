@@ -143,7 +143,7 @@ async function testConnection() {
     <DialogContent class="sm:max-w-md">
       <DialogHeader>
         <DialogTitle>Service connection</DialogTitle>
-        <DialogDescription>Connect a language model (OpenRouter、DeepSeek 或 MiMo) and at least one image provider (fal or Ark) to start creating. Your keys are stored locally on this computer. Keep your API keys private. Never share them with anyone.</DialogDescription>
+        <DialogDescription>Connect a language model (OpenRouter、DeepSeek、MiMo 或 GLM) and at least one image provider (fal or Ark) to start creating. Your keys are stored locally on this computer. Keep your API keys private. Never share them with anyone.</DialogDescription>
       </DialogHeader>
       <form class="space-y-4" @submit.prevent="testConnection">
         <div class="space-y-2">
@@ -176,7 +176,7 @@ async function testConnection() {
           <Label for="llm-model">{{ providerPreset.label }} 模型 ID</Label>
           <Input id="llm-model" v-model="llmModel" required autocomplete="off" :disabled="testing" :placeholder="providerPreset.model" />
           <p class="text-xs text-muted-foreground">
-            DeepSeek 推荐使用支持图片理解的 <code>deepseek-v4-flash-vision-exp</code>；MiMo 默认使用 <code>mimo-v2.5-pro</code>。
+            DeepSeek 推荐使用支持图片理解的 <code>deepseek-v4-flash-vision-exp</code>；MiMo 默认使用 <code>mimo-v2.5-pro</code>；GLM 默认使用多模态 <code>glm-5.3-flash</code>。
           </p>
         </div>
         <div class="space-y-2">

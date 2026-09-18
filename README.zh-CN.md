@@ -36,7 +36,7 @@
 
 本项目是 [PoloX AI](https://polox.ai) 的开源版本，与 [Lovart](https://lovart.ai)、[Crepal](https://crepal.ai) 同属 AI 创作平台。PoloX 采用 **Agent 原生**的产品设计：以 Agent 对话与无限画布承载全部交互，将创作、生成与编辑融入连续的工作流程。你只需描述想法，与 Agent 沟通，并在画布上持续完善结果。
 
-PoloX 基于 Nuxt、Vue 和 SQLite 在本地运行。使用自己的 OpenRouter、DeepSeek 或小米 MiMo 大模型 Key，并配置 fal 或火山方舟图片生成 Key（二选一即可），无需注册 PoloX 账号或订阅。项目、对话、生成记录和媒体文件保存在本机；AI 推理由外部服务提供，相关输入会发送给服务商，API 使用费用由服务商收取。
+PoloX 基于 Nuxt、Vue 和 SQLite 在本地运行。使用自己的 OpenRouter、DeepSeek、小米 MiMo 或智谱 GLM 大模型 Key，并配置 fal 或火山方舟图片生成 Key（二选一即可），无需注册 PoloX 账号或订阅。项目、对话、生成记录和媒体文件保存在本机；AI 推理由外部服务提供，相关输入会发送给服务商，API 使用费用由服务商收取。
 
 ## 使用 Codex 安装
 
@@ -108,11 +108,11 @@ ffprobe -version
 ## 获取并配置大模型和图片生成 API Key
 
 1. 启动 PoloX，点击右上角红色的 **API keys not configured**（尚未配置 API Key）提示。
-2. 在 **Service connection**（服务连接）弹窗中选择一个大模型服务：OpenRouter、[DeepSeek 直连](https://platform.deepseek.com/api_keys) 或 [小米 MiMo 直连](https://platform.xiaomimimo.com/console/api-keys)。
+2. 在 **Service connection**（服务连接）弹窗中选择一个大模型服务：OpenRouter、[DeepSeek 直连](https://platform.deepseek.com/api_keys)、[小米 MiMo 直连](https://platform.xiaomimimo.com/console/api-keys) 或 [智谱 GLM 直连](https://bigmodel.cn/usercenter/proj-mgmt/apikeys)。
 3. 填入所选大模型 API Key。图片生成端至少配置 [fal Key](https://fal.ai/login?returnTo=%2Fdashboard%2Fkeys) 或火山方舟 Ark Key（二选一即可）。
 4. 点击 **Test connection**（连通测试）。大模型和至少一个图片服务测试通过后，提示会变为绿色的 **Services connected**（服务已连接），即可开始创作。
 
-DeepSeek 直连推荐使用支持图片理解的 **DeepSeek V4 Flash Vision Exp**（`deepseek-v4-flash-vision-exp`）；MiMo 默认使用 `mimo-v2.5-pro`。你可以在同一弹窗中修改 Base URL 和模型 ID。连通测试会发送一次简短的模型请求，可能产生少量 API 费用。MiMo Token Plan 用户可把 Base URL 改为控制台提供的专属地址。
+DeepSeek 直连推荐使用支持图片理解的 **DeepSeek V4 Flash Vision Exp**（`deepseek-v4-flash-vision-exp`）；MiMo 默认使用 `mimo-v2.5-pro`；GLM 默认使用多模态 `glm-5.3-flash`，Base URL 为 `https://open.bigmodel.cn/api/paas/v4`。你可以在同一弹窗中修改 Base URL 和模型 ID。连通测试会发送一次简短的模型请求，可能产生少量 API 费用。MiMo Token Plan 用户可把 Base URL 改为控制台提供的专属地址。
 
 ## 已接入的 AI 模型
 

@@ -13,8 +13,9 @@ function load(file, mocks = {}, globals = {}) {
    openrouter: {label:'OpenRouter',baseUrl:'https://openrouter.ai/api/v1',model:'deepseek/deepseek-v4-flash-vision-exp'},
    deepseek: {label:'DeepSeek 直连',baseUrl:'https://api.deepseek.com',model:'deepseek-v4-flash-vision-exp'},
    mimo: {label:'小米 MiMo 直连',baseUrl:'https://api.xiaomimimo.com/v1',model:'mimo-v2.5-pro'},
+   glm: {label:'智谱 GLM 直连',baseUrl:'https://open.bigmodel.cn/api/paas/v4',model:'glm-5.3-flash'},
   },
-  normalizeLlmProvider: value => value === 'deepseek' || value === 'mimo' || value === 'openrouter' ? value : 'openrouter',
+  normalizeLlmProvider: value => value === 'deepseek' || value === 'mimo' || value === 'glm' || value === 'openrouter' ? value : 'openrouter',
   llmProviderPreset: provider => defaultLlmProviders.LLM_PROVIDER_PRESETS[provider],
   llmChatCompletionsUrl: (_provider, baseUrl) => `${baseUrl.replace(/\/$/, '')}/chat/completions`,
   llmAuthHeaders: (provider, key) => provider === 'mimo' ? {'api-key':key} : {Authorization:`Bearer ${key}`},
@@ -30,8 +31,9 @@ function harness() {
    openrouter: {label:'OpenRouter',baseUrl:'https://openrouter.ai/api/v1',model:'deepseek/deepseek-v4-flash-vision-exp'},
    deepseek: {label:'DeepSeek 直连',baseUrl:'https://api.deepseek.com',model:'deepseek-v4-flash-vision-exp'},
    mimo: {label:'小米 MiMo 直连',baseUrl:'https://api.xiaomimimo.com/v1',model:'mimo-v2.5-pro'},
+   glm: {label:'智谱 GLM 直连',baseUrl:'https://open.bigmodel.cn/api/paas/v4',model:'glm-5.3-flash'},
   },
-  normalizeLlmProvider: value => value === 'deepseek' || value === 'mimo' || value === 'openrouter' ? value : 'openrouter',
+  normalizeLlmProvider: value => value === 'deepseek' || value === 'mimo' || value === 'glm' || value === 'openrouter' ? value : 'openrouter',
   llmProviderPreset: provider => llmProviders.LLM_PROVIDER_PRESETS[provider],
  }
  const settings = load('serviceSettings', {
@@ -154,6 +156,26 @@ test('MiMo direct provider uses api-key authentication and completion token fiel
    const body=JSON.parse(init.body)
    assert.equal(body.model,'mimo-v2.5-pro')
    assert.equal(body.max_completion_tokens,8)
+   return {ok:true,status:200,json:async()=>({choices:[{message:{content:'OK'}}]})}
+  }
+  if(url.endsWith('/models')) return {ok:true,status:200}
+  throw new Error(`unexpected request: ${url}`)
+ }})
+ const result=await api.testServiceConnections(saved)
+ assert.equal(result.llm.ok,true)
+ assert.equal(result.connected,true)
+ db.close()
+})
+
+test('GLM direct provider uses bearer authentication and official endpoint', async () => {
+ const {db,settings:s}=harness()
+ const saved=s.updateServiceSettings({llmProvider:'glm',llmApiKey:'glm-key',llmModel:'glm-5.3-flash',arkApiKey:'ark-key'})
+ const api=load('serviceConnection',{'./serviceSettings':s,'@fal-ai/client':{}}, {fetch:async(url,init)=>{
+  if(url.includes('open.bigmodel.cn')) {
+   assert.equal(init.headers.Authorization,'Bearer glm-key')
+   const body=JSON.parse(init.body)
+   assert.equal(body.model,'glm-5.3-flash')
+   assert.equal(body.max_tokens,8)
    return {ok:true,status:200,json:async()=>({choices:[{message:{content:'OK'}}]})}
   }
   if(url.endsWith('/models')) return {ok:true,status:200}

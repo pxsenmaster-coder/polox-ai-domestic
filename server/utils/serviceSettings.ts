@@ -123,7 +123,7 @@ export function publicServiceStatus(settings = readServiceSettings()) {
     falOk: fresh && settings.falOk,
     arkOk: fresh && settings.arkOk,
     // The agent needs one tested language model plus at least one image provider.
-    // Existing OpenRouter/fal workspaces remain valid, while direct DeepSeek/MiMo
+    // Existing OpenRouter/fal workspaces remain valid, while direct DeepSeek/MiMo/GLM
     // workspaces can now run with Ark without a second LLM gateway.
     connected: fresh && llmOk && (settings.falOk || settings.arkOk),
     checkedAt: settings.checkedAt,

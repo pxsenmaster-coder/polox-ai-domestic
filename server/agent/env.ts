@@ -19,5 +19,5 @@ export const agentEnv = {
 }
 export function assertAgentSecrets() {
   if (!agentEnv.llmApiKey || (!agentEnv.falApiKey && !agentEnv.arkApiKey))
-    throw new Error('Configure a language model (OpenRouter, DeepSeek or MiMo) and at least one image provider (fal or Ark) using Service connection in the top-right corner.')
+    throw new Error('Configure a language model (OpenRouter, DeepSeek, MiMo or GLM) and at least one image provider (fal or Ark) using Service connection in the top-right corner.')
 }

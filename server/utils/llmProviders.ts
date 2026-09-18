@@ -25,7 +25,9 @@ export function normalizeLlmBaseUrl(provider: LlmProvider, raw: string) {
     ? host === 'openrouter.ai'
     : provider === 'deepseek'
       ? host === 'api.deepseek.com'
-      : host === 'api.xiaomimimo.com' || host === 'token-plan-cn.xiaomimimo.com' || host.endsWith('.xiaomimimo.com')
+      : provider === 'mimo'
+        ? host === 'api.xiaomimimo.com' || host === 'token-plan-cn.xiaomimimo.com' || host.endsWith('.xiaomimimo.com')
+        : host === 'open.bigmodel.cn'
   if (!allowed)
     throw new Error(`${llmProviderPreset(provider).label} base URL must use its official API host.`)
   return url.href.replace(/\/$/, '')

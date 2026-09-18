@@ -36,7 +36,7 @@
 
 This is the open-source edition of [PoloX AI](https://polox.ai), a creative platform in the same space as [Lovart](https://lovart.ai) and [Crepal](https://crepal.ai). PoloX takes an **agent-native** approach: agent conversations and an infinite canvas bring creation, generation, and editing into one continuous workflow. Describe what you want, work with the agent, and refine the results on the canvas.
 
-PoloX runs locally with Nuxt, Vue, and SQLite. Bring your own OpenRouter, DeepSeek, or Xiaomi MiMo LLM key, plus a fal or Volcengine Ark image-generation key; no PoloX account or subscription is required. Projects, conversations, generation history, and media are stored on your machine. AI inference uses external providers, so relevant inputs are sent to those services and their API charges apply.
+PoloX runs locally with Nuxt, Vue, and SQLite. Bring your own OpenRouter, DeepSeek, Xiaomi MiMo, or Zhipu GLM LLM key, plus a fal or Volcengine Ark image-generation key; no PoloX account or subscription is required. Projects, conversations, generation history, and media are stored on your machine. AI inference uses external providers, so relevant inputs are sent to those services and their API charges apply.
 
 ## Install with Codex
 
@@ -108,11 +108,11 @@ Restart the development server after installing these tools.
 ## Connect a language model and an image provider
 
 1. Start PoloX and click the red **API keys not configured** indicator in the top-right corner.
-2. In the **Service connection** dialog, choose a language model provider: OpenRouter, [DeepSeek direct](https://platform.deepseek.com/api_keys), or [Xiaomi MiMo direct](https://platform.xiaomimimo.com/console/api-keys).
+2. In the **Service connection** dialog, choose a language model provider: OpenRouter, [DeepSeek direct](https://platform.deepseek.com/api_keys), [Xiaomi MiMo direct](https://platform.xiaomimimo.com/console/api-keys), or [Zhipu GLM direct](https://bigmodel.cn/usercenter/proj-mgmt/apikeys).
 3. Paste the selected language-model API key. For image generation, configure either a [fal key](https://fal.ai/login?returnTo=%2Fdashboard%2Fkeys) or a Volcengine Ark key (one is enough).
 4. Click **Test connection**. Once the language model and at least one image provider pass, the indicator turns green and reads **Services connected**. You are ready to create.
 
-For direct DeepSeek, use **DeepSeek V4 Flash Vision Exp** (`deepseek-v4-flash-vision-exp`) when image understanding is needed. MiMo defaults to `mimo-v2.5-pro`. You can change the Base URL and model ID in the same dialog. MiMo Token Plan users can replace the Base URL with the dedicated endpoint shown in the MiMo console. Connection testing sends a short model request and may incur a small API charge.
+For direct DeepSeek, use **DeepSeek V4 Flash Vision Exp** (`deepseek-v4-flash-vision-exp`) when image understanding is needed. MiMo defaults to `mimo-v2.5-pro`; GLM defaults to the multimodal `glm-5.3-flash` at `https://open.bigmodel.cn/api/paas/v4`. You can change the Base URL and model ID in the same dialog. MiMo Token Plan users can replace the Base URL with the dedicated endpoint shown in the MiMo console. Connection testing sends a short model request and may incur a small API charge.
 
 ## Available AI models
 

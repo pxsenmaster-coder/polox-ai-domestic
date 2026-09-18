@@ -43,7 +43,7 @@ interface OpenRouterChunk {
 async function providerImageUrl(url: string) {
   const local = await readStoredMedia(url, MAX_INLINE_IMAGE_BYTES)
   // fal remains the preferred CDN hand-off when configured. When it is not
-  // configured, send local uploads as data URLs so DeepSeek/MiMo can still
+  // configured, send local uploads as data URLs so DeepSeek/MiMo/GLM can still
   // inspect user images without requiring a second paid provider.
   if (!local) {
     return url

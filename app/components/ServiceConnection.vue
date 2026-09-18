@@ -25,7 +25,7 @@ interface ConnectionStatus {
 interface ConnectionResult {
   llm: { ok: boolean, message: string }
   openRouter: { ok: boolean, message: string }
-  fal: { ok: boolean, message: string }
+  fal: { ok: boolean, skipped?: boolean, message: string }
   ark: { ok: boolean, message: string }
 }
 const status = ref<ConnectionStatus | null>(null)
@@ -205,14 +205,14 @@ async function testConnection() {
           </p>
         </div>
         <p class="text-xs text-muted-foreground">
-          Clear a key to remove it when you test and save. Testing saves your settings, sends a short request to the selected language model, checks fal authentication/file upload, and verifies Ark authentication when configured. The model request may incur a small charge.
+          Clear a key to remove it when you test and save. Testing saves your settings, sends a short request to the selected language model, verifies Ark when configured, and checks fal only when Ark is not configured as the primary image provider. The model request may incur a small charge.
         </p>
         <div v-if="results" class="space-y-2 rounded-md border p-3 text-sm" role="status" aria-live="polite">
           <p :class="results.llm.ok ? 'text-emerald-600' : 'text-red-600'">
             {{ results.llm.ok ? '✓' : '⚠' }} {{ results.llm.message }}
           </p>
-          <p :class="results.fal.ok ? 'text-emerald-600' : 'text-red-600'">
-            {{ results.fal.ok ? '✓' : '⚠' }} {{ results.fal.message }}
+          <p :class="results.fal.skipped ? 'text-muted-foreground' : results.fal.ok ? 'text-emerald-600' : 'text-red-600'">
+            {{ results.fal.skipped ? '–' : results.fal.ok ? '✓' : '⚠' }} {{ results.fal.message }}
           </p>
           <p :class="results.ark.ok ? 'text-emerald-600' : 'text-red-600'">
             {{ results.ark.ok ? '✓' : '⚠' }} {{ results.ark.message }}

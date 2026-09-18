@@ -10,6 +10,8 @@ export interface SlotSnapshot {
   message: string
 }
 export interface SlotMeta {
+  provider?: 'fal' | 'ark'
+  model?: string
   modelId?: string
   modelInput?: Record<string, unknown>
   requestModel?: string

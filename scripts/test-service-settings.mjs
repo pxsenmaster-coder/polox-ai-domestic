@@ -129,6 +129,24 @@ test('Ark can be the only image provider and is checked without a generation req
  db.close()
 })
 
+test('Ark primary provider skips the fal authentication probe', async () => {
+ const {db,settings:s}=harness()
+ const saved=s.updateServiceSettings({openRouterKey:'openrouter-key',openRouterModel:'provider/model',falKey:'stale-fal-key',arkApiKey:'ark-key',arkModel:'seedream-5-pro'})
+ let falCalls=0
+ const api=load('serviceConnection',{'./serviceSettings':s,'@fal-ai/client':{}}, {fetch:async(url,init)=>{
+  if(url.includes('openrouter')) return {ok:true,status:200,json:async()=>({choices:[{message:{content:'OK'}}]})}
+  if(url.includes('queue.fal.run')) { falCalls++; throw new Error('fal should not be called when Ark is primary') }
+  if(url.endsWith('/models')) return {ok:true,status:200}
+  throw new Error(`unexpected request: ${url}`)
+ }})
+ const result=await api.testServiceConnections(saved)
+ assert.equal(falCalls,0)
+ assert.equal(result.fal.skipped,true)
+ assert.equal(result.ark.ok,true)
+ assert.equal(result.connected,true)
+ db.close()
+})
+
 test('DeepSeek direct provider uses its OpenAI-compatible endpoint', async () => {
  const {db,settings:s}=harness()
  const saved=s.updateServiceSettings({llmProvider:'deepseek',llmApiKey:'deepseek-key',llmModel:'deepseek-v4-flash-vision-exp',arkApiKey:'ark-key'})

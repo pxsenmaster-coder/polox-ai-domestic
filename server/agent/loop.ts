@@ -10,9 +10,9 @@ import { concatVideoUrls } from './concat'
 import { EXPORT_ZIP_TOOL, exportSessionZip, resolveZipExport } from './exportZip'
 import { removeBackground } from './fal'
 import { confirmedTextEdit, detectImageText, textEditNeedsSummary } from './imageTextEditor'
-import { generateGptImage2, generateSeedance2, generateSeedance25, generateWan30 } from './modelGeneration'
 import { hasLayerSourceImage, layerSplitNeedsPlan, layerSplitNeedsSummary, needsLayerDescriptionCard } from './layerSplitBrief'
 import { assembleToolCalls, streamChat } from './llm'
+import { arkImageInput, arkImageModel, generatePreferredImage, generateSeedance2, generateSeedance25, generateWan30, shouldPreferArkImageGeneration } from './modelGeneration'
 import { modelPreferenceFromChoice } from './modelPreference'
 import { modelConfirmation, prepareModelGeneration, runModelGeneration, selectedModelIds } from './models'
 import { MAX_STEPS } from './policy'
@@ -351,6 +351,8 @@ async function runGeneration(sessionId: string, callId: string, args: GenerateIm
   emit({ type: 'image', image })
   emit({ type: 'tool', name: GENERATE_IMAGE_TOOL, status: 'start', callId })
   try {
+    const useArk = shouldPreferArkImageGeneration()
+    const preferredModel = useArk ? arkImageModel(args.input_urls) : undefined
     return await withGenerationSlot(sessionId, callId, emit, signal, {
       kind: 'still',
       prompt: args.prompt,
@@ -358,13 +360,21 @@ async function runGeneration(sessionId: string, callId: string, args: GenerateIm
       resolution: args.resolution,
       sourceUrl: args.input_urls[0] || '',
       inputUrls: image.inputUrls,
+      ...(useArk
+        ? {
+            provider: 'ark' as const,
+            model: preferredModel,
+            modelInput: arkImageInput(args),
+            requestModel: preferredModel,
+          }
+        : {}),
     }, async (bindProvider) => {
-      const result = await generateGptImage2({
+      const result = await generatePreferredImage({
         prompt: args.prompt,
         aspect_ratio: args.aspect_ratio,
         resolution: args.resolution,
         input_urls: args.input_urls,
-      }, undefined, rememberProviderTask(sessionId, image, bindProvider))
+      }, signal, rememberProviderTask(sessionId, image, bindProvider))
       const next = {
         ...image,
         status: 'success' as const,
@@ -821,8 +831,9 @@ function confirmationModel(kind: ConfirmationPayload['kind'], imageArgs?: Genera
   }
   if (kind === 'mixed')
     return { modelName: 'Multiple models', task: 'Mixed jobs' }
+  const useArk = shouldPreferArkImageGeneration()
   return {
-    modelName: imageArgs?.input_urls.length ? 'GPT Image 2.5 Sunburst' : 'GPT Image 2',
+    modelName: useArk ? 'Seedream 5.0 Pro · 火山方舟' : imageArgs?.input_urls.length ? 'GPT Image 2.5 Sunburst' : 'GPT Image 2',
     task: imageArgs?.input_urls.length ? 'Image to Image' : 'Text to Image',
   }
 }

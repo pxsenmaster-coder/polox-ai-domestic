@@ -95,6 +95,8 @@ export async function acquireAgentSlot(input: {
   sessionId: string
   callId: string
   projectId?: string
+  provider?: 'fal' | 'ark'
+  model?: string
   modelId?: string
   modelInput?: Record<string, unknown>
   requestModel?: string
@@ -127,7 +129,11 @@ export async function acquireAgentSlot(input: {
   const registered = input.modelId ? AGENT_MODELS.find(model => model.id === input.modelId) : undefined
   if (input.modelId && !registered)
     throw new Error('Unknown Agent model')
-  const meta = registered ? { model: registered.id, category: registered.category, task: registered.task, provider: isArkGenerateModel(registered.id) ? 'ark' as const : 'fal' as const } : modelMeta(kind, stills[0] || sourceUrl, videoMode, String(input.videoFamily || ''))
+  const meta = registered
+    ? { model: registered.id, category: registered.category, task: registered.task, provider: isArkGenerateModel(registered.id) ? 'ark' as const : 'fal' as const }
+    : input.provider && input.model
+      ? { model: input.model, category: 'Image', task: stills.length ? 'Image to Image' : 'Text to Image', provider: input.provider }
+      : modelMeta(kind, stills[0] || sourceUrl, videoMode, String(input.videoFamily || ''))
   const prompt = String(input.prompt || '').trim()
   let inputPayload: Record<string, unknown> = {
     prompt,
@@ -161,7 +167,7 @@ export async function acquireAgentSlot(input: {
   else if (stills.length) {
     inputPayload.input_urls = stills
   }
-  if (registered && input.modelInput)
+  if (input.modelInput)
     inputPayload = input.modelInput
   const requestModel = registered ? (input.requestModel || registered.id) : meta.model
   const sourceUrls = httpUrlList([...stills, ...videos])

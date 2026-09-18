@@ -112,7 +112,7 @@ ffprobe -version
 3. 填入所选大模型 API Key。图片生成端至少配置 [fal Key](https://fal.ai/login?returnTo=%2Fdashboard%2Fkeys) 或火山方舟 Ark Key（二选一即可）。
 4. 点击 **Test connection**（连通测试）。大模型和至少一个图片服务测试通过后，提示会变为绿色的 **Services connected**（服务已连接），即可开始创作。
 
-DeepSeek 直连推荐使用支持图片理解的 **DeepSeek V4 Flash Vision Exp**（`deepseek-v4-flash-vision-exp`）；MiMo 默认使用 `mimo-v2.5-pro`；GLM 默认使用多模态 `glm-5.3-flash`，Base URL 为 `https://open.bigmodel.cn/api/paas/v4`。你可以在同一弹窗中修改 Base URL 和模型 ID。连通测试会发送一次简短的模型请求，可能产生少量 API 费用。MiMo Token Plan 用户可把 Base URL 改为控制台提供的专属地址。
+DeepSeek 直连推荐使用支持图片理解的 **DeepSeek V4 Flash Vision Exp**（`deepseek-v4-flash-vision-exp`）；MiMo 默认使用 `mimo-v2.5-pro`；GLM 默认使用多模态 `glm-5.3-flash`，Base URL 为 `https://open.bigmodel.cn/api/paas/v4`。你可以在同一弹窗中修改 Base URL 和模型 ID。完成 Ark 配置并通过测试后，Agent 的通用绘图请求会优先调用火山方舟 Seedream 5.0 Pro，不再探测或调用 fal；明确选择 fal 模型时仍保留 fal，Ark 不可用时才回退到 fal。连通测试会发送一次简短的模型请求，可能产生少量 API 费用。MiMo Token Plan 用户可把 Base URL 改为控制台提供的专属地址。
 
 ## 已接入的 AI 模型
 

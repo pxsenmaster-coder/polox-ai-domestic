@@ -77,3 +77,25 @@ test('Ark task uses the configured model and returns image URLs without a paid p
   assert.equal(result.requestId, 'ark-request-1')
   assert.deepEqual(Array.from(result.urls), ['https://cdn.example.com/result.png'])
 })
+
+test('generic image generation prefers tested Ark over fal', async () => {
+  let request
+  const created = []
+  const api = load('server/agent/modelGeneration.ts', {
+    '../models/generationJob': { GenerationJob: { findOne: async () => null } },
+    '../utils/arkGenerate': { createArkTask: async (model, input) => {
+      request = { model, input }
+      return { requestId: 'ark-request-2', urls: ['https://cdn.example.com/ark.png'] }
+    } },
+    '../utils/falGenerate': { createFalTask: async () => { throw new Error('fal should not be called') } },
+    '../utils/falInput': { falEndpoint: model => model },
+    '../utils/generateInput': { sanitizeGenerateInput: (_model, input) => input },
+    '../utils/serviceSettings': { readServiceSettings: () => ({ arkApiKey: 'ark-secret', arkOk: true }) },
+    './env': { agentEnv: { falApiKey: 'fal-secret' } },
+  })
+  const result = await api.generatePreferredImage({ prompt: 'A paper-cut album cover', aspect_ratio: '1:1', resolution: '2K', input_urls: [] }, undefined, id => created.push(id))
+  assert.equal(request.model, 'ark/seedream/5-pro-text-to-image')
+  assert.equal(JSON.stringify(request.input), JSON.stringify({ prompt: 'A paper-cut album cover', size: '2K', watermark: false }))
+  assert.equal(result.taskId, 'ark-request-2')
+  assert.deepEqual(created, ['ark-request-2'])
+})

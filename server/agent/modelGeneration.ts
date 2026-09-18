@@ -1,13 +1,35 @@
+import { ARK_SEEDREAM_I2I_MODEL, ARK_SEEDREAM_T2I_MODEL } from '~~/shared/utils/arkSeedream'
 import { GenerationJob } from '../models/generationJob'
+import { createArkTask } from '../utils/arkGenerate'
 import { createFalTask } from '../utils/falGenerate'
 import { falEndpoint } from '../utils/falInput'
 import { sanitizeGenerateInput } from '../utils/generateInput'
+import { readServiceSettings } from '../utils/serviceSettings'
 import { agentEnv } from './env'
 
 export const IMAGE_TIMEOUT_MS = 8 * 60 * 1000
 export const VIDEO_TIMEOUT_MS = 30 * 60 * 1000
 export const VIDEO_25_TIMEOUT_MS = 40 * 60 * 1000
 export type OnProviderCreated = (providerTaskId: string) => void | Promise<void>
+
+export function shouldPreferArkImageGeneration() {
+  const settings = readServiceSettings()
+  return Boolean(settings.arkApiKey && settings.arkOk)
+}
+
+export function arkImageModel(inputUrls: string[] = []) {
+  return inputUrls.length ? ARK_SEEDREAM_I2I_MODEL : ARK_SEEDREAM_T2I_MODEL
+}
+
+export function arkImageInput(input: { prompt: string, resolution: string, input_urls?: string[] }) {
+  const imageUrls = input.input_urls || []
+  return {
+    prompt: input.prompt,
+    size: input.resolution,
+    watermark: false,
+    ...(imageUrls.length ? { image_urls: imageUrls } : {}),
+  }
+}
 
 export async function pollFalTask(taskId: string, options: { timeoutMs: number, failLabel: string, endpoint?: string, statusUrl?: string, responseUrl?: string }) {
   const job = options.endpoint ? null : await GenerationJob.findOne({ providerTaskId: taskId })
@@ -57,6 +79,16 @@ async function generate(model: string, input: Record<string, unknown>, timeoutMs
 }
 export async function generateGptImage2(input: { prompt: string, aspect_ratio: string, resolution: string, input_urls?: string[] }, signal?: AbortSignal, onCreated?: OnProviderCreated) {
   return generate(input.input_urls?.length ? 'gpt-image-2-image-to-image' : 'gpt-image-2-text-to-image', input, IMAGE_TIMEOUT_MS, signal, onCreated)
+}
+
+export async function generatePreferredImage(input: { prompt: string, aspect_ratio: string, resolution: string, input_urls?: string[] }, signal?: AbortSignal, onCreated?: OnProviderCreated) {
+  signal?.throwIfAborted()
+  if (!shouldPreferArkImageGeneration())
+    return generateGptImage2(input, signal, onCreated)
+  const model = arkImageModel(input.input_urls)
+  const result = await createArkTask(model, arkImageInput(input))
+  await onCreated?.(result.requestId)
+  return { taskId: result.requestId, urls: result.urls }
 }
 interface VideoInput { prompt: string, aspect_ratio: string, resolution: string, duration: number, generate_audio: boolean, first_frame_url?: string, last_frame_url?: string, reference_image_urls?: string[], reference_video_urls?: string[] }
 function videoModel(prefix: string, input: VideoInput) {

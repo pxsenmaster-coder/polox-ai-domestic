@@ -47,6 +47,8 @@ async function checkLlm(settings: ServiceSettings) {
   }
 }
 async function checkFal(settings: ServiceSettings) {
+  if (settings.arkApiKey)
+    return { ok: false, skipped: true, message: 'fal check skipped; Ark is configured as the primary image provider.' }
   if (!settings.falKey)
     return { ok: false, message: 'fal API key is not configured.' }
   try {

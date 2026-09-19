@@ -50,7 +50,7 @@ test('output layers stay ordered', async () => {
     await assert.rejects(() => service().readLayerResult({ layers: [layer(1, 10, 10), layer(1, 10, 10)] }));
 });
 test('missing dimensions do not trigger a download', async () => {
-    const result = await service({ fetch: async () => { throw new Error('Must not fetch image dimensions'); } }).readLayerResult({ layers: [layer(0), layer(1)] });
+    await service({ fetch: async () => { throw new Error('Must not fetch image dimensions'); } }).readLayerResult({ layers: [layer(0), layer(1)] });
 });
 test('server forces highest resolution, fast processing, and empty default prompt', () => {
     const input = service().sanitizeImageLayerInput({ image_url: ['https://example.com/input.png'], prompt: 'user override', image_size: 'auto_1K', enhance_prompt_mode: 'standard', basePixels: 1, layerCount: 2, enable_safety_checker: false, sync_mode: true });

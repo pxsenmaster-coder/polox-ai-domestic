@@ -1,8 +1,8 @@
-import { readServiceSettings } from './serviceSettings'
 import { createHash } from 'node:crypto'
 import { basename } from 'node:path'
 import { createFalClient } from '@fal-ai/client'
 import { readStoredMedia } from './localMedia'
+import { readServiceSettings } from './serviceSettings'
 
 function storage() {
   const key = readServiceSettings().falKey

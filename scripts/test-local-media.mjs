@@ -13,7 +13,11 @@ configureMediaBase('http://localhost:3001')
 after(async () => {
   process.chdir(cwd)
   configureMediaBase('http://localhost:3001')
-  await rm(dir, { recursive: true, force: true })
+  // Windows can leave a symlink entry behind while recursively removing the
+  // media tree. Unlink the known test escape first, then remove its parents.
+  await rm(join(dir, '.data', 'media', 'escape.png'), { force: true })
+  await rm(join(dir, '.data'), { recursive: true, force: true, maxRetries: 3, retryDelay: 100 })
+  await rm(dir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 })
 })
 
 test('local writes preserve exact bytes and support unicode URL round trips', async () => {

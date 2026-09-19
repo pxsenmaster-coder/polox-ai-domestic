@@ -5,6 +5,7 @@ import type { AiModelConfig } from '~~/shared/types/aiModel'
 import type { AgentChatMessage, AgentConfirmPolicy, AgentImage, AgentListItem, AgentQuality, AgentStatus, ChoiceAnswer, ConfirmationPayload, PendingAttachment } from '~/composables/useAgentLab'
 import { ArrowUp, ChevronDown, Paperclip, Plus, Square, X } from 'lucide-vue-next'
 import { AGENT_MODELS, agentModelLogo, modelMention, readModelMentions, stripModelMentions } from '~~/shared/utils/agentModels'
+import { isImageLayerSplitterModel } from '~~/shared/utils/imageLayerSplitter'
 import { agentComposerPlaceholder } from '~/utils/agentComposerPlaceholder'
 import { confirmationWorking } from '~/utils/agentConfirmationState'
 import { messageMedia } from '~/utils/agentMessageMedia'
@@ -82,6 +83,11 @@ const emit = defineEmits<{
 const draft = defineModel<string>('draft', { default: '' })
 const qualityPreference = defineModel<AgentQuality>('qualityPreference', { default: 'hobby' })
 const confirmPolicy = defineModel<AgentConfirmPolicy>('confirmPolicy', { default: 'always' })
+const composerLocked = computed(() => props.pending
+  || props.status === 'generating'
+  || props.status === 'queued'
+  || (props.confirmationOpen)
+  || props.choiceOpen)
 const selectedModels = computed(() => readModelMentions(draft.value).map(id => AGENT_MODELS.find(model => model.id === id)!))
 const composerText = computed({
   get: () => stripModelMentions(draft.value),
@@ -225,7 +231,7 @@ function filesFromDrop(event: DragEvent) {
       return true
     // Some browsers omit type for audio/images; fall back to extension.
     const name = file.name.toLowerCase()
-    return /\.(jpe?g|png|webp|gif|mp3|wav|aac|ogg|m4a)$/.test(name)
+    return /\.(?:jpe?g|png|webp|gif|mp3|wav|aac|ogg|m4a)$/.test(name)
   })
 }
 
@@ -392,11 +398,7 @@ watch(() => props.activeAgentId, (id, previous) => {
 const hasReadyAttachment = computed(() => props.attachments.some(item => item.status === 'ready' && item.url))
 const hasFailedAttachment = computed(() => props.attachments.some(item => item.status === 'fail'))
 const hasGeneratingMedia = computed(() => props.images.some(item => item.status === 'generating'))
-const composerLocked = computed(() => props.pending
-  || props.status === 'generating'
-  || props.status === 'queued'
-  || (props.confirmationOpen)
-  || props.choiceOpen)
+const archivingLayerJob = computed(() => props.projectJobs.find(job => isImageLayerSplitterModel(job.model) && job.state === 'archiving' && job.archiveProgress?.total))
 const agentRunning = computed(() => props.pending
   || props.status === 'thinking'
   || props.status === 'calling_tool'
@@ -481,18 +483,27 @@ const { pause: pauseGeneratingCopy, resume: resumeGeneratingCopy } = useInterval
 }, 8000, { immediate: false })
 watch(() => props.status, (status) => {
   generatingCopyIndex.value = 0
-  if (status === 'generating' || status === 'queued' || hasGeneratingMedia.value)
+  if (status === 'generating' || status === 'queued' || hasGeneratingMedia.value || archivingLayerJob.value)
     resumeGeneratingCopy()
   else
     pauseGeneratingCopy()
 }, { immediate: true })
 watch(hasGeneratingMedia, (busy) => {
-  if (busy)
+  if (busy || archivingLayerJob.value)
     resumeGeneratingCopy()
   else if (props.status !== 'generating' && props.status !== 'queued')
     pauseGeneratingCopy()
 })
+watch(archivingLayerJob, (job) => {
+  if (job)
+    resumeGeneratingCopy()
+  else if (props.status !== 'generating' && props.status !== 'queued' && !hasGeneratingMedia.value)
+    pauseGeneratingCopy()
+})
 const statusLabel = computed(() => {
+  const archive = archivingLayerJob.value?.archiveProgress
+  if (archive?.total)
+    return ['Saving layers ', archive.completed, '/', archive.total, archive.failed ? [' · ', archive.failed, ' failed'].join('') : '', '…'].join('')
   const generating = props.status === 'generating' || hasGeneratingMedia.value
   if ((props.confirmationOpen || props.choiceOpen) && props.status !== 'queued' && !generating)
     return ''
@@ -506,7 +517,7 @@ const statusLabel = computed(() => {
     return 'Thinking'
   return ''
 })
-const mediaWorking = computed(() => props.status === 'generating' || props.status === 'queued' || hasGeneratingMedia.value)
+const mediaWorking = computed(() => props.status === 'generating' || props.status === 'queued' || hasGeneratingMedia.value || Boolean(archivingLayerJob.value))
 const latestConfirmedId = computed(() => {
   for (let index = props.messages.length - 1; index >= 0; index--) {
     const message = props.messages[index]
@@ -515,7 +526,7 @@ const latestConfirmedId = computed(() => {
   }
   return ''
 })
-const activeBusy = computed(() => props.pending || (props.status !== 'idle') || hasGeneratingMedia.value)
+const activeBusy = computed(() => props.pending || (props.status !== 'idle') || hasGeneratingMedia.value || Boolean(archivingLayerJob.value))
 const prefsLocked = computed(() => activeBusy.value)
 const compactComposer = computed(() => activeBusy.value)
 const statusInlineVisible = computed(() => {

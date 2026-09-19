@@ -47,12 +47,15 @@
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare",
     "typecheck": "vue-tsc --noEmit",
-    "lint": "eslint .",
+    "lint": "eslint app server shared nuxt.config.ts eslint.config.js",
+    "lint:tests": "eslint scripts",
+    "lint:all": "eslint .",
     "format": "eslint --fix .",
     "release": "release-it",
     "test:sqlite": "node --experimental-transform-types --test scripts/test-sqlite.mjs scripts/test-agent-history.mjs scripts/test-local-data-migration.mjs scripts/test-local-generation-queue.mjs",
     "test:media": "node --experimental-transform-types --test scripts/test-local-media.mjs scripts/test-agent-upload.mjs scripts/test-image-text-editor.mjs scripts/test-media-export.mjs",
-    "test:ark": "node --test scripts/test-ark-models.mjs"
+    "test:ark": "node --test scripts/test-ark-models.mjs",
+    "test:layers": "node --experimental-transform-types --test scripts/test-ark-models.mjs scripts/test-agent-layer-brief.mjs scripts/test-canvas-layer-interaction.mjs scripts/test-canvas-layer-state.mjs scripts/test-image-layer-composition.mjs scripts/test-generation-layer-public.mjs scripts/test-agent-layer-results.mjs"
   },
   "dependencies": {
     "@fal-ai/client": "^1.10.1",

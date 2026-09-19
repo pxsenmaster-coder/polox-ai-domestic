@@ -1,6 +1,5 @@
-import { useServiceConnection } from './useServiceConnection'
 import type { AgentConfirmPolicy, AgentQuality } from '~~/shared/types/agentPreferences'
-import type { GenerationJobPublic } from '~~/shared/types/generation'
+import type { GenerationJobPublic, ImageLayerPublic } from '~~/shared/types/generation'
 import type { GptImage2AspectRatio, GptImage2Resolution } from '~~/shared/utils/gptImage2'
 import type { ImageTextEdit, ImageTextLine } from '~~/shared/utils/imageTextEditor'
 import { publicGenerationFailMessage } from '~~/shared/types/generation'
@@ -11,6 +10,7 @@ import { agentRecoveryNotice, isAgentDisconnectError as isDisconnectError, recov
 import { gptImage2ComboError } from '~~/shared/utils/gptImage2'
 import { isMediaVideoUrl } from '~~/shared/utils/seedance25'
 import { confirmationMedia, reconcileConfirmationStates } from '~/utils/agentConfirmationState'
+import { useServiceConnection } from './useServiceConnection'
 
 export type { AgentConfirmPolicy, AgentQuality }
 export type AgentStatus = 'idle' | 'thinking' | 'calling_tool' | 'generating' | 'queued'
@@ -37,6 +37,10 @@ export interface AgentImage {
   videoMode?: 'text' | 'image' | 'reference' | 'concat'
   videoFamily?: VideoFamily
   providerTaskId?: string
+  layerGroupId?: string
+  layerId?: string
+  layerIndex?: number
+  layer?: ImageLayerPublic
 }
 export interface PendingAttachment {
   id: string
@@ -97,16 +101,20 @@ export interface ChoicePayload {
   prompt: string
   recommendation?: string
   questions: ChoiceQuestion[]
+  /** Exact boxed-overlay image URLs attached for the layer confirmation card. */
+  boxedPreviewImages?: { id: string, url: string }[]
 }
 export interface ChoiceAnswer {
   imageSelections?: {
     imageUrl: string
     regions: number[][]
+    boxedImageUrl?: string
   }[]
   textEdits?: ImageTextEdit[]
   textLines?: ImageTextLine[]
   imageUrl?: string
   regions?: number[][]
+  boxedImageUrl?: string
   questionId: string
   optionId?: string
   label?: string
@@ -384,20 +392,24 @@ export function useAgentLab(options?: {
   onMounted(() => { void currentLab.value.ensureHydrated() })
   onUnmounted(() => { currentLab.value.flush() })
   // Consumers destructure refs and actions, so both must follow the active runtime.
-  return Object.fromEntries(Object.entries(currentLab.value).map(([key, value]) => {
+  const proxy = {} as ReturnType<typeof createAgentLab>
+  for (const [key, value] of Object.entries(currentLab.value)) {
     const read = () => Reflect.get(currentLab.value, key)
-    return [key, isRef(value)
+    const next = isRef(value)
       ? computed({
           get: () => read().value,
           set: (next) => { read().value = next },
         })
       : key === 'sendMessage'
         ? async (...args: unknown[]) => {
-            if (!await connection.ensureConnected()) return false
-            return Reflect.apply(read(), currentLab.value, args)
-          }
-        : (...args: unknown[]) => Reflect.apply(read(), currentLab.value, args)]
-  })) as ReturnType<typeof createAgentLab>
+          if (!await connection.ensureConnected())
+            return false
+          return Reflect.apply(read(), currentLab.value, args)
+        }
+        : (...args: unknown[]) => Reflect.apply(read(), currentLab.value, args)
+    Reflect.set(proxy, key, next)
+  }
+  return proxy
 }
 function createAgentLab(options?: {
   projectId?: MaybeRefOrGetter<string>
@@ -711,6 +723,10 @@ function createAgentLab(options?: {
       modelInput: item.modelInput,
       inputUrls: item.inputUrls,
       referenceVideoUrls: item.referenceVideoUrls,
+      layerGroupId: item.layerGroupId,
+      layerId: item.layerId,
+      layerIndex: item.layerIndex,
+      layer: item.layer,
     }))
     const seenUrls = new Set(imagesOut.map(item => item.url).filter(Boolean))
     for (const message of messages.value) {
@@ -736,6 +752,10 @@ function createAgentLab(options?: {
           modelInput: undefined,
           inputUrls: undefined,
           referenceVideoUrls: undefined,
+          layerGroupId: undefined,
+          layerId: undefined,
+          layerIndex: undefined,
+          layer: undefined,
         })
       }
     }
@@ -957,6 +977,10 @@ function createAgentLab(options?: {
         videoFamily: item.videoFamily,
         modelId: item.modelId,
         modelInput: item.modelInput,
+        layerGroupId: item.layerGroupId,
+        layerId: item.layerId,
+        layerIndex: item.layerIndex,
+        layer: item.layer,
       }))
     if (!pendingItems.length)
       return
@@ -1016,6 +1040,10 @@ function createAgentLab(options?: {
       aspectRatio?: string
       resolution?: string
       duration?: number
+      layerGroupId?: string
+      layerId?: string
+      layerIndex?: number
+      layer?: ImageLayerPublic
     }>
   }): StoredAgent {
     const messages = sanitizeChatMessages((chat.messages || [])
@@ -1047,6 +1075,10 @@ function createAgentLab(options?: {
         error: item.error || '',
         sourceUrl: item.sourceUrl || '',
         duration: item.duration || undefined,
+        layerGroupId: item.layerGroupId,
+        layerId: item.layerId,
+        layerIndex: item.layerIndex,
+        layer: item.layer,
       }))
     const title = titleFromMessage(chat.preview || '') || DEFAULT_AGENT_TITLE
     return {
@@ -1148,7 +1180,8 @@ function createAgentLab(options?: {
         storedAgents.value = storedAgents.value.filter(agent => !excluded.has(agent.sessionId || ''))
         if (excluded.has(sessionId.value)) {
           const next = storedAgents.value[0] || emptyStoredAgent(DEFAULT_AGENT_TITLE)
-          if (!storedAgents.value.length) storedAgents.value = [next]
+          if (!storedAgents.value.length)
+            storedAgents.value = [next]
           applyAgent(next)
         }
         writeStore()

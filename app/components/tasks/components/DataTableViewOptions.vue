@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { Table } from '@tanstack/vue-table'
+import type { Column, Table } from '@tanstack/vue-table'
 import type { Task } from '../data/schema'
 import { computed } from 'vue'
 
@@ -8,6 +8,10 @@ interface DataTableViewOptionsProps {
 }
 
 const props = defineProps<DataTableViewOptionsProps>()
+
+function onColumnVisibilityChange(column: Column<Task, unknown>, value: unknown) {
+  column.toggleVisibility(Boolean(value))
+}
 
 const columns = computed(() => props.table.getAllColumns()
   .filter(
@@ -37,7 +41,7 @@ const columns = computed(() => props.table.getAllColumns()
         :key="column.id"
         class="capitalize"
         :checked="column.getIsVisible()"
-        @update:checked="(value) => column.toggleVisibility(!!value)"
+        @update:checked="onColumnVisibilityChange(column, $event)"
       >
         {{ column.id }}
       </DropdownMenuCheckboxItem>

@@ -1,8 +1,30 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
+import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 
-const skillsDir = resolve(dirname(fileURLToPath(import.meta.url)), 'skills')
+function normalizeModuleUrl(value: string) {
+  if (value.startsWith('file:'))
+    return value
+  if (/^[a-z]:[\\/]/i.test(value))
+    return `file:///${value.replace(/\\/g, '/')}`
+  if (value.startsWith('/'))
+    return `file://${value}`
+  return value
+}
+
+function moduleDirectory(value: string) {
+  try {
+    return dirname(fileURLToPath(normalizeModuleUrl(value)))
+  }
+  catch {
+    // Nitro's Windows prerenderer can expose import.meta.url as `/D:/...`.
+    // Keep the local source-tree fallback available for dev and test runs.
+    return resolve(process.cwd(), 'server/agent')
+  }
+}
+
+const skillsDir = resolve(moduleDirectory(import.meta.url), 'skills')
 
 const FIRST_SKILLS = ['reference-analysis', 'prompt-rewrite', 'result-evaluation', 'long-form-video']
 

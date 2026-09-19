@@ -63,9 +63,11 @@ function parseChoiceBody(body: Record<string, unknown>): ChoiceBody {
           optionId: typeof row.optionId === 'string' ? row.optionId : undefined,
           imageUrl: typeof row.imageUrl === 'string' ? row.imageUrl : undefined,
           regions: Array.isArray(row.regions) ? row.regions as number[][] : undefined,
+          boxedImageUrl: typeof row.boxedImageUrl === 'string' ? row.boxedImageUrl : undefined,
           imageSelections: row.imageSelections as {
             imageUrl: string
             regions: number[][]
+            boxedImageUrl?: string
           }[] | undefined,
           text: typeof row.text === 'string' ? row.text : undefined,
           skipped: row.skipped === true,

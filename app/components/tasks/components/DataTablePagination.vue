@@ -5,7 +5,13 @@ import type { Task } from '../data/schema'
 interface DataTablePaginationProps {
   table: Table<Task>
 }
-defineProps<DataTablePaginationProps>()
+const props = defineProps<DataTablePaginationProps>()
+
+function onPageSizeChange(value: unknown) {
+  const pageSize = Number(value)
+  if (Number.isInteger(pageSize) && pageSize > 0)
+    props.table.setPageSize(pageSize)
+}
 </script>
 
 <template>
@@ -21,7 +27,7 @@ defineProps<DataTablePaginationProps>()
         </p>
         <Select
           :model-value="`${table.getState().pagination.pageSize}`"
-          @update:model-value="table.setPageSize"
+          @update:model-value="onPageSizeChange"
         >
           <SelectTrigger class="h-8 w-[70px]">
             <SelectValue :placeholder="`${table.getState().pagination.pageSize}`" />

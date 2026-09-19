@@ -1,4 +1,4 @@
-import type { GenerationJobPublic } from '../../shared/types/generation'
+import type { GenerationJobPublic, ImageLayerPublic } from '../../shared/types/generation'
 import { AGENT_CONCAT_MODEL, isConcatenatedPrompt, isConcatVideoMode } from '~~/shared/utils/agentConcat'
 import { AGENT_MODELS } from '~~/shared/utils/agentModels'
 import { isArkGenerateModel } from '~~/shared/utils/arkSeedream'
@@ -24,6 +24,10 @@ export interface AgentResultItem {
   duration?: number
   videoMode?: 'text' | 'image' | 'reference' | 'concat'
   videoFamily?: 'seedance-2' | 'seedance-2-5' | 'wan-3'
+  layerGroupId?: string
+  layerId?: string
+  layerIndex?: number
+  layer?: ImageLayerPublic
 }
 function taskIdFor(id: string) {
   return `agent_${id}`.slice(0, 120)
@@ -157,6 +161,53 @@ function inputFor(item: AgentResultItem) {
     ...(stills.length ? { input_urls: stills } : {}),
   }
 }
+function layerTaskId(item: AgentResultItem, fallbackId: string) {
+  const raw = String(item.layerGroupId || '').trim()
+  if (!raw)
+    return taskIdFor(fallbackId)
+  return raw.startsWith('agent_') ? raw.slice(0, 120) : taskIdFor(raw)
+}
+function serializedLayer(item: AgentResultItem, url: string) {
+  const layer = item.layer
+  if (!layer)
+    return undefined
+  return {
+    image: {
+      url,
+      ...(layer.imageWidth ? { width: layer.imageWidth } : {}),
+      ...(layer.imageHeight ? { height: layer.imageHeight } : {}),
+    },
+    z_index: layer.zIndex,
+    name: layer.name,
+    description: layer.description,
+    ...(layer.boundingBox ? { bounding_box: layer.boundingBox } : {}),
+  }
+}
+function recoveredLayerPayload(existing: { resultJson?: string }, item: AgentResultItem, url: string) {
+  let current: Record<string, unknown> = {}
+  try {
+    const parsed = JSON.parse(existing.resultJson || '')
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed))
+      current = parsed as Record<string, unknown>
+  }
+  catch {}
+  const nextLayer = serializedLayer(item, url)
+  const rows = Array.isArray(current.layers) ? [...current.layers] : []
+  if (nextLayer && !rows.some((row) => {
+    if (!row || typeof row !== 'object')
+      return false
+    const image = (row as Record<string, unknown>).image
+    return Boolean(image && typeof image === 'object' && (image as Record<string, unknown>).url === url)
+  })) {
+    rows.push(nextLayer)
+  }
+  rows.sort((left, right) => Number((left as Record<string, unknown>)?.z_index || 0) - Number((right as Record<string, unknown>)?.z_index || 0))
+  return {
+    ...current,
+    resultUrls: rows.map(row => String(((row as Record<string, unknown>).image as Record<string, unknown>)?.url || '')).filter(Boolean),
+    layers: rows,
+  }
+}
 export async function recordAgentResults(projectId: string, items: AgentResultItem[]) {
   await connectDatabase()
   const project = await resolveProject(projectId)
@@ -169,7 +220,8 @@ export async function recordAgentResults(projectId: string, items: AgentResultIt
       continue
     if (item.kind === 'upload')
       continue
-    const taskId = taskIdFor(id)
+    const isLayerRecovery = Boolean(item.layerGroupId && item.layer)
+    const taskId = isLayerRecovery ? layerTaskId(item, id) : taskIdFor(id)
     const meta = modelFor(item)
     const input = { ...inputFor(item), asset_name: String(item.name || '').trim().slice(0, 100) }
     const now = new Date()
@@ -180,8 +232,20 @@ export async function recordAgentResults(projectId: string, items: AgentResultIt
       url,
     ])
     const existing = await GenerationJob.findOne({ taskId, deleted: { $ne: true } })
-    if (existing && existing.originalRequest?.source === 'agent' && existing.originalRequest?.holdSlot === false) {
+    if (existing && existing.originalRequest?.source === 'agent' && existing.originalRequest?.holdSlot === false && !existing.originalRequest?.layerRecovery) {
       existing.projectId = String(project._id)
+      await existing.save()
+      jobs.push(toPublicJob(existing))
+      importedIds.push(id)
+      continue
+    }
+    if (existing && isLayerRecovery && existing.originalRequest?.layerRecovery) {
+      const payload = recoveredLayerPayload(existing, item, url)
+      existing.projectId = String(project._id)
+      existing.resultUrls = httpUrlList(payload.resultUrls as string[], 32)
+      existing.sourceUrls = httpUrlList([...existing.sourceUrls, ...refs], 32)
+      existing.resultJson = JSON.stringify(payload)
+      existing.lastSyncAt = now
       await existing.save()
       jobs.push(toPublicJob(existing))
       importedIds.push(id)
@@ -215,14 +279,21 @@ export async function recordAgentResults(projectId: string, items: AgentResultIt
       task: meta.task,
       input,
       requestBody: { model: meta.model, input },
-      originalRequest: { source: 'agent', imageId: id, ...(isConcatItem(item) ? { operation: 'concat' } : {}) },
+      originalRequest: {
+        source: 'agent',
+        imageId: id,
+        ...(isConcatItem(item) ? { operation: 'concat' } : {}),
+        ...(isLayerRecovery ? { holdSlot: false, layerRecovery: true, layerGroupId: item.layerGroupId } : {}),
+      },
       taskId,
       providerTaskId: '',
       state: 'success',
       sourceUrls: refs,
       resultUrls: [url],
       resultAssets: [],
-      resultJson: '',
+      resultJson: isLayerRecovery
+        ? JSON.stringify({ resultUrls: [url], layers: [serializedLayer(item, url)].filter(Boolean) })
+        : '',
       failCode: '',
       failMsg: '',
 

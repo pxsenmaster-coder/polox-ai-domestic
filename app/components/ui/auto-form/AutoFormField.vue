@@ -15,6 +15,14 @@ function isValidConfig(config: any): config is ConfigItem {
   return !!config?.component
 }
 
+const inputComponent = computed(() => {
+  const configured = isValidConfig(props.config) && typeof props.config.component === 'string'
+    ? props.config.component as keyof typeof INPUT_COMPONENTS
+    : undefined
+  const handler = configured || DEFAULT_ZOD_HANDLERS[props.shape.type] || 'string'
+  return INPUT_COMPONENTS[handler]
+})
+
 const delegatedProps = computed(() => {
   if (['ZodObject', 'ZodArray'].includes(props.shape?.type))
     return { schema: props.shape?.schema }
@@ -26,11 +34,7 @@ const { isDisabled, isHidden, isRequired, overrideOptions } = useDependencies(pr
 
 <template>
   <component
-    :is="isValidConfig(config)
-      ? typeof config.component === 'string'
-        ? INPUT_COMPONENTS[config.component!]
-        : config.component
-      : INPUT_COMPONENTS[DEFAULT_ZOD_HANDLERS[shape.type]] "
+    :is="inputComponent"
     v-if="!isHidden"
     :field-name="fieldName"
     :label="shape.schema?.description"

@@ -1,3 +1,4 @@
+import type { CanvasLayerState } from '../../shared/types/canvas'
 import { defineCollection } from '../utils/sqlite'
 // Store each canvas object independently.
 interface CanvasLayoutDocument {
@@ -8,6 +9,7 @@ interface CanvasLayoutDocument {
   y: number
   width: number
   height: number
+  layerState?: CanvasLayerState
   zoom: number
   nextSlot: number
   version: number

@@ -133,7 +133,7 @@ test('Ark primary provider skips the fal authentication probe', async () => {
  const {db,settings:s}=harness()
  const saved=s.updateServiceSettings({openRouterKey:'openrouter-key',openRouterModel:'provider/model',falKey:'stale-fal-key',arkApiKey:'ark-key',arkModel:'seedream-5-pro'})
  let falCalls=0
- const api=load('serviceConnection',{'./serviceSettings':s,'@fal-ai/client':{}}, {fetch:async(url,init)=>{
+ const api=load('serviceConnection',{'./serviceSettings':s,'@fal-ai/client':{}}, {fetch:async(url,_init)=>{
   if(url.includes('openrouter')) return {ok:true,status:200,json:async()=>({choices:[{message:{content:'OK'}}]})}
   if(url.includes('queue.fal.run')) { falCalls++; throw new Error('fal should not be called when Ark is primary') }
   if(url.endsWith('/models')) return {ok:true,status:200}

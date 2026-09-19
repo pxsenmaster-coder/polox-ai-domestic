@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import process from 'node:process';
 import vm from 'node:vm';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -10,7 +9,12 @@ import { configureDatabase, defineCollection, closeDatabase } from '../server/ut
 import ts from 'typescript';
 import { AGENT_TRANSIENT_ERROR_RE, isAgentTransientMessage } from '../shared/utils/agentHistoryVisibility.ts';
 function load(path, globals) {
-    const source = readFileSync(new URL(path, import.meta.url), 'utf8').replace(/^import .*\n/gm, '');
+    // Normalize Windows line endings before stripping imports for the VM harness.
+    // Without this, CRLF leaves imports behind and the transpiled CommonJS code
+    // calls `require` inside a context that intentionally only exposes mocks.
+    const source = readFileSync(new URL(path, import.meta.url), 'utf8')
+        .replace(/\r\n/g, '\n')
+        .replace(/^import[^\r\n]*\n/gm, '');
     const js = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
     const context = vm.createContext({ exports: {}, ...globals });
     vm.runInContext(js, context);

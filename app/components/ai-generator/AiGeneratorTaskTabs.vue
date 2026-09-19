@@ -47,8 +47,7 @@ function onTaskChange(value: string | number) {
             v-for="task in categoryTasks"
             :key="task.value"
             :value="task.value"
-            :class="[
-              'flex-none shrink-0',
+            class="flex-none shrink-0" :class="[
               task.comingSoon
                 ? 'text-muted-foreground data-[state=active]:bg-transparent data-[state=active]:text-muted-foreground dark:data-[state=active]:bg-transparent'
                 : 'text-muted-foreground hover:text-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground dark:data-[state=active]:border-transparent dark:data-[state=active]:bg-primary dark:data-[state=active]:text-primary-foreground',

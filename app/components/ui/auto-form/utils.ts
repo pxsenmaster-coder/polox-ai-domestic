@@ -27,8 +27,8 @@ export function getIndexIfArray(string: string) {
   // Match the index
   const match = string.match(indexRegex)
   // Extract the index (number)
-  const index = match ? Number.parseInt(match[1]) : undefined
-  return index
+  const capture = match?.[1]
+  return capture === undefined ? undefined : Number.parseInt(capture, 10)
 }
 
 /**

@@ -263,7 +263,7 @@ export function latestStill(images: AgentImage[]) {
 export function resolveSessionUrl(token: string, images: AgentImage[], label: string) {
   const value = token.trim()
   const latest = latestStill(images)
-  const useLatest = !value || /^(latest|last|newest)$/i.test(value)
+  const useLatest = !value || /^(?:latest|last|newest)$/i.test(value)
   if (useLatest) {
     if (!latest)
       throw new Error(`No still in this session for ${label}. Generate or upload an image first, or pass a public HTTP URL.`)
@@ -411,7 +411,7 @@ export function latestVideo(images: AgentImage[]) {
 export function resolveSessionVideo(token: string, images: AgentImage[], label: string) {
   const value = token.trim()
   const latest = latestVideo(images)
-  const useLatest = !value || /^(latest|last|newest)$/i.test(value)
+  const useLatest = !value || /^(?:latest|last|newest)$/i.test(value)
   if (useLatest) {
     if (!latest)
       throw new Error(`No video in this session for ${label}. Generate a clip first, or pass a public HTTP URL.`)
@@ -545,7 +545,7 @@ export function parseConcatVideoArgs(raw: string): ConcatVideoArgs {
   const tokens = asStringList(parsed.video_urls ?? parsed.urls, MAX_CONCAT_CLIPS, 'video_urls')
   if (tokens.length < 2)
     throw new Error('concat_videos needs at least two clips, in story order')
-  if (tokens.some(token => /^(latest|last|newest)$/i.test(token)))
+  if (tokens.some(token => /^(?:latest|last|newest)$/i.test(token)))
     throw new Error('concat_videos cannot use "latest"; pass each clip URL or session id in order')
 
   return { video_urls: tokens }
@@ -555,7 +555,7 @@ export function resolveConcatVideoUrls(args: ConcatVideoArgs, images: AgentImage
   return args.video_urls.map((token, index) => resolveSessionVideo(token, images, `video_urls[${index}]`).url)
 }
 
-const CUSTOM_OPTION_RE = /^(other|custom|其他|其它|自定义)\b/i
+const CUSTOM_OPTION_RE = /^(?:other|custom|其他|其它|自定义)\b/i
 
 function clipAsk(value: unknown, max: number) {
   return asString(value).slice(0, max)

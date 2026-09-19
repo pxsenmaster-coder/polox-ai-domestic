@@ -54,6 +54,52 @@ async function providerImageUrl(url: string) {
   return `data:${local.mime};base64,${Buffer.from(local.bytes).toString('base64')}`
 }
 
+/** Keep raw bbox coordinates out of LLM text; the model receives the visual overlay instead. */
+function messagesForLlm(messages: ChatMessage[]): ChatMessage[] {
+  return messages.map(({ historyId: _historyId, internal: _internal, ...message }) => {
+    if (message.role !== 'tool' || typeof message.content !== 'string')
+      return message
+    try {
+      const parsed = JSON.parse(message.content) as {
+        answers?: Array<Record<string, unknown>>
+        [key: string]: unknown
+      }
+      if (!Array.isArray(parsed.answers))
+        return message
+      let changed = false
+      const answers = parsed.answers.map((answer) => {
+        if (answer.questionId !== 'layer_selection_method' || answer.optionId !== 'draw_boxes')
+          return answer
+        const next: Record<string, unknown> = { ...answer }
+        if ('regions' in next) {
+          next.boxCount = Array.isArray(next.regions) ? next.regions.length : 0
+          delete next.regions
+          changed = true
+        }
+        if (Array.isArray(next.imageSelections)) {
+          next.imageSelections = (next.imageSelections as Array<Record<string, unknown>>).map((selection) => {
+            const row: Record<string, unknown> = {
+              imageUrl: selection.imageUrl,
+              boxCount: Array.isArray(selection.regions) ? selection.regions.length : (selection.boxCount || 0),
+            }
+            if (typeof selection.boxedImageUrl === 'string' && selection.boxedImageUrl)
+              row.boxedImageUrl = selection.boxedImageUrl
+            changed = true
+            return row
+          })
+        }
+        return next
+      })
+      if (!changed)
+        return message
+      return { ...message, content: JSON.stringify({ ...parsed, answers }) }
+    }
+    catch {
+      return message
+    }
+  })
+}
+
 async function providerMessages(messages: ChatMessage[]) {
   return Promise.all(messages.map(async ({ historyId: _historyId, internal: _internal, ...message }) => {
     if (!Array.isArray(message.content))
@@ -101,7 +147,7 @@ export async function completeText(options: {
       stream: false,
       ...(settings.llmProvider === 'openrouter' ? { reasoning: { enabled: false } } : {}),
       ...(settings.llmProvider === 'mimo' ? { max_completion_tokens: options.maxTokens ?? 32 } : { max_tokens: options.maxTokens ?? 32 }),
-      messages: await providerMessages(options.messages),
+      messages: await providerMessages(messagesForLlm(options.messages)),
     }),
   })
 
@@ -136,7 +182,7 @@ export async function streamChat(options: {
       temperature: 0.4,
       stream: true,
       ...(settings.llmProvider === 'openrouter' ? { reasoning: { enabled: false } } : {}),
-      messages: await providerMessages(options.messages),
+      messages: await providerMessages(messagesForLlm(options.messages)),
       tools: options.tools,
       tool_choice: options.disableTools ? 'none' : options.requiredTool ? { type: 'function', function: { name: options.requiredTool } } : 'auto',
       parallel_tool_calls: !options.requiredTool,

@@ -10,7 +10,8 @@ import { concatVideoUrls } from './concat'
 import { EXPORT_ZIP_TOOL, exportSessionZip, resolveZipExport } from './exportZip'
 import { removeBackground } from './fal'
 import { confirmedTextEdit, detectImageText, textEditNeedsSummary } from './imageTextEditor'
-import { hasLayerSourceImage, layerSplitNeedsPlan, layerSplitNeedsSummary, needsLayerDescriptionCard } from './layerSplitBrief'
+import { renderLayerSelectionOverlay } from './layerSelectionOverlay'
+import { confirmedLayerSelections, hasLayerSourceImage, layerSplitAwaitingAdjust, layerSplitNeedsConfirm, layerSplitNeedsPlan, layerSplitNeedsSummary, needsLayerDescriptionCard } from './layerSplitBrief'
 import { assembleToolCalls, streamChat } from './llm'
 import { arkImageInput, arkImageModel, generatePreferredImage, generateSeedance2, generateSeedance25, generateWan30, shouldPreferArkImageGeneration } from './modelGeneration'
 import { modelPreferenceFromChoice } from './modelPreference'
@@ -973,11 +974,18 @@ function queueAskUser(sessionId: string, items: Array<{
   }
   const intro = items.map(item => item.args.prompt).find(Boolean) || ''
   const recommendation = items.map(item => item.args.recommendation).find(Boolean) || ''
+  const layerConfirm = questions.some(question => question.id === 'layer_split_confirm' || question.id === 'layer_split_plan')
+  const boxedPreviewImages = layerConfirm
+    ? confirmedLayerSelections(session.messages)
+        .map((selection, index) => selection.boxedImageUrl ? { id: `boxed-${index}`, url: selection.boxedImageUrl } : null)
+        .filter((row): row is { id: string, url: string } => Boolean(row))
+    : []
   const payload = {
     id: crypto.randomUUID(),
     prompt: intro,
     ...(recommendation ? { recommendation } : {}),
     questions,
+    ...(boxedPreviewImages.length ? { boxedPreviewImages } : {}),
     ...(first.args.textEdits ? { textEdits: first.args.textEdits } : {}),
     ...(first.args.textEdit ? { textEdit: first.args.textEdit } : {}),
   }
@@ -1214,9 +1222,11 @@ export async function runAgentLoop(sessionId: string, emit: Emit, signal?: Abort
       }
       refreshSessionPrompt(session)
       const hasLayerImage = hasLayerSourceImage(session.messages, session.images)
-      const missingLayerImage = !hasLayerImage && (selectedModelIds(session).includes('image-layer-splitter') || layerSplitNeedsPlan(session.messages) || needsLayerDescriptionCard(session.messages))
+      const missingLayerImage = !hasLayerImage && (selectedModelIds(session).includes('image-layer-splitter') || layerSplitNeedsPlan(session.messages) || layerSplitNeedsConfirm(session.messages) || needsLayerDescriptionCard(session.messages))
       const summarizeImageEdit = layerSplitNeedsSummary(session.messages, session.images) || textEditNeedsSummary(session)
-      const requireLayerPlan = hasLayerImage && needsLayerDescriptionCard(session.messages)
+      const requireLayerAdjust = hasLayerImage && layerSplitAwaitingAdjust(session.messages)
+      const requireLayerPlan = hasLayerImage && !requireLayerAdjust && needsLayerDescriptionCard(session.messages)
+      const requireLayerConfirm = hasLayerImage && !requireLayerAdjust && !requireLayerPlan && layerSplitNeedsConfirm(session.messages)
       emit({ type: 'status', status: 'thinking' })
       const toolAcc: Array<{
         index: number
@@ -1232,10 +1242,14 @@ export async function runAgentLoop(sessionId: string, emit: Emit, signal?: Abort
             ? [...session.messages, { role: 'system', content: 'The requested image editing or layer splitting batch has already been submitted. Only summarize each source image’s actual result, including failures or pending jobs. Do not call tools, repeat successful edits or splits, inspect results as new source images, or retry failed images. A failed image does not authorize rerunning this batch. Wait for a new user request before any further generation.' }]
             : missingLayerImage
               ? [...session.messages, { role: 'system', content: 'The user has not supplied a source image for Image Layer Splitter. Briefly ask them to upload the image in their conversation language, then wait. Do not show choices, describe image contents, or call any tools yet. Uploading the source image must happen before layer-selection cards.' }]
-              : requireLayerPlan
-                ? [...session.messages, { role: 'system', content: 'The user selected Describe the layers. Your next response MUST call ask_user with one question id layer_split_plan. Inspect the supplied image and offer concrete image-specific extraction plans, plus Other with allow_custom: true. Recommend the best-fitting plan. Use the established conversation language. Do not ask for a description in ordinary text and do not repeat the method question.' }]
+              : requireLayerAdjust || requireLayerPlan || requireLayerConfirm
+                ? [...session.messages, { role: 'system', content: requireLayerAdjust
+                    ? 'The user asked to adjust the layer targets. Your next response MUST call ask_user with exactly one question id layer_selection_method. Offer Draw boxes, Describe the layers, and Other. Do not split until the user supplies a replacement selection.'
+                    : requireLayerPlan
+                      ? 'The user selected Describe the layers. Your next response MUST call ask_user with one question id layer_split_plan. Inspect the supplied image and offer concrete image-specific extraction plans, plus Other with allow_custom: true. Recommend the best-fitting plan. Use the established conversation language. Do not ask for a description in ordinary text and do not repeat the method question.'
+                      : 'The user confirmed layer selection boxes. Each source has an original image and a boxed-overlay preview attached. Visually compare boxed vs original; map each visible numbered box to the object by appearance and position. Do not expect bbox coordinates in the prompt. Your next response MUST call ask_user with exactly one question id layer_split_confirm. List each box on its own line, then ask for confirmation. Options must include confirm, adjust, and Other. Do not call the splitter yet.' }]
                 : session.messages,
-          requiredTool: requireLayerPlan ? ASK_USER_TOOL : undefined,
+          requiredTool: requireLayerAdjust || requireLayerPlan || requireLayerConfirm ? ASK_USER_TOOL : undefined,
           disableTools: missingLayerImage || summarizeImageEdit,
           tools: [...openAiTools.filter(tool => !((session.quality === 'custom' || selectedModelIds(session).length) && [GENERATE_IMAGE_TOOL, GENERATE_VIDEO_TOOL, REMOVE_BACKGROUND_TOOL].includes(tool.function.name))), ...registeredModelTools],
           signal: llmSignal,
@@ -1244,7 +1258,7 @@ export async function runAgentLoop(sessionId: string, emit: Emit, signal?: Abort
               return
             if (delta.content) {
               text += delta.content
-              if (!requireLayerPlan)
+              if (!requireLayerAdjust && !requireLayerPlan && !requireLayerConfirm)
                 emit({ type: 'text', delta: delta.content })
             }
             if (delta.reasoning)
@@ -1272,8 +1286,8 @@ export async function runAgentLoop(sessionId: string, emit: Emit, signal?: Abort
       void maybeEmitTitle(session.id, emit)
       // Enforce summary-only continuation even if an upstream model returns unsolicited tool calls.
       const toolCalls = summarizeImageEdit ? [] : assembleToolCalls(toolAcc)
-      if (requireLayerPlan && !toolCalls.length)
-        throw new Error('The layer plan card could not be created. Please retry to choose the layers; no generation was started.')
+      if ((requireLayerAdjust || requireLayerPlan || requireLayerConfirm) && !toolCalls.length)
+        throw new Error(`${requireLayerAdjust ? 'The layer selection card' : requireLayerConfirm ? 'The layer confirmation card' : 'The layer plan card'} could not be created. Please retry to choose the layers; no generation was started.`)
       // Tool-call preambles are planning, while a terminal response is the answer.
       if (reasoning || (toolCalls.length && text)) {
         const thinking = [reasoning, toolCalls.length ? text : ''].filter(Boolean).join('\n\n')
@@ -1293,11 +1307,11 @@ export async function runAgentLoop(sessionId: string, emit: Emit, signal?: Abort
       }
       session.messages.push(assistantMessage)
       touch(session)
-      if (requireLayerPlan) {
+      if (requireLayerAdjust || requireLayerPlan || requireLayerConfirm) {
         const valid = toolCalls.length === 1 && toolCalls[0]!.function.name === ASK_USER_TOOL && (() => {
           try {
             const args = parseAskUserArgs(toolCalls[0]!.function.arguments)
-            return args.questions.length === 1 && args.questions[0]?.id === 'layer_split_plan'
+            return args.questions.length === 1 && (args.questions[0]?.id === 'layer_selection_method' || args.questions[0]?.id === 'layer_split_plan' || args.questions[0]?.id === 'layer_split_confirm')
           }
           catch {
             return false
@@ -1305,7 +1319,7 @@ export async function runAgentLoop(sessionId: string, emit: Emit, signal?: Abort
         })()
         if (!valid) {
           for (const call of toolCalls)
-            appendToolResult(sessionId, call.id, JSON.stringify({ ok: false, error: 'Call ask_user with exactly one layer_split_plan question, concrete extraction options, and Other. Do not generate or ask the method again.' }))
+            appendToolResult(sessionId, call.id, JSON.stringify({ ok: false, error: 'Call ask_user with exactly one layer confirmation question. List each object or box on its own line and include confirm, adjust, and Other. Do not generate or ask the method again.' }))
           continue
         }
       }
@@ -1628,7 +1642,7 @@ function formatChoiceResult(payload: NonNullable<AgentSession['pendingChoice']>[
       const selection = question.id === 'layer_selection_method' && option.id === 'draw_boxes'
         ? row.imageSelections !== undefined
           ? { imageSelections: validateLayerSelections(row.imageSelections, sourceUrls) }
-          : validateLayerSelection(row.imageUrl, row.regions, sourceUrls)
+          : validateLayerSelection(row.imageUrl, row.regions, sourceUrls, row.boxedImageUrl)
         : undefined
       return {
         questionId: question.id,
@@ -1655,6 +1669,67 @@ function formatChoiceResult(payload: NonNullable<AgentSession['pendingChoice']>[
     answers,
   })
 }
+
+async function appendLayerSelectionReview(session: AgentSession, layerImages: Array<{ imageUrl: string, regions: number[][], boxedImageUrl?: string }>, signal?: AbortSignal) {
+  const content: UserContentPart[] = []
+  const imageNotes: string[] = []
+  const boxedByImageUrl = new Map<string, string>()
+  for (let index = 0; index < layerImages.length; index++) {
+    const selection = layerImages[index]!
+    const boxedImageUrl = selection.boxedImageUrl || await renderLayerSelectionOverlay(selection.imageUrl, selection.regions, session.id, signal)
+    boxedByImageUrl.set(selection.imageUrl, boxedImageUrl)
+    const n = index + 1
+    imageNotes.push(`Image ${n}: original and Image ${n} with boxes drawn are attached (${selection.regions.length} box${selection.regions.length === 1 ? '' : 'es'}).`)
+    content.push(
+      { type: 'text', text: `Image ${n} original:` },
+      { type: 'image_url', image_url: { url: selection.imageUrl } },
+      { type: 'text', text: `Image ${n} with boxes drawn (numbered overlays):` },
+      { type: 'image_url', image_url: { url: boxedImageUrl } },
+    )
+  }
+  // Persist the exact overlay URLs so the confirmation card and later turns use
+  // the same visual reference as the LLM.
+  for (const message of [...session.messages].reverse()) {
+    if (message.role !== 'tool' || typeof message.content !== 'string')
+      continue
+    try {
+      const parsed = JSON.parse(message.content) as { ok?: boolean, answers?: ChoiceAnswer[] }
+      if (parsed.ok !== true || !Array.isArray(parsed.answers))
+        continue
+      let changed = false
+      for (const answer of parsed.answers) {
+        if (answer.questionId !== 'layer_selection_method' || answer.optionId !== 'draw_boxes')
+          continue
+        const selections = answer.imageSelections?.length
+          ? answer.imageSelections
+          : (answer.imageUrl && answer.regions?.length ? [{ imageUrl: answer.imageUrl, regions: answer.regions, boxedImageUrl: answer.boxedImageUrl }] : [])
+        if (!selections.length)
+          continue
+        answer.imageSelections = selections.map((selection) => {
+          const boxedImageUrl = boxedByImageUrl.get(selection.imageUrl) || selection.boxedImageUrl
+          if (boxedImageUrl && boxedImageUrl !== selection.boxedImageUrl)
+            changed = true
+          return { imageUrl: selection.imageUrl, regions: selection.regions, ...(boxedImageUrl ? { boxedImageUrl } : {}) }
+        })
+        if (answer.imageUrl && boxedByImageUrl.has(answer.imageUrl)) {
+          answer.boxedImageUrl = boxedByImageUrl.get(answer.imageUrl)
+          changed = true
+        }
+      }
+      if (changed) {
+        message.content = JSON.stringify(parsed)
+        break
+      }
+    }
+    catch { /* Ignore non-choice tool payloads. */ }
+  }
+  content.unshift({
+    type: 'text',
+    text: `Image Layer Splitter: the user drew selection boxes. ${imageNotes.join(' ')} Visually compare boxed vs original; map each visible box to the object by appearance and position. Then call ask_user with question id layer_split_confirm. Format the prompt with each box on its own line. Do not expect bbox coordinates in this message. Do not call the splitter or show a generation confirmation yet.`,
+  })
+  session.messages.push({ role: 'user', internal: true, content })
+}
+
 export async function handleChoice(sessionId: string, body: ChoiceBody, emit: Emit, signal?: AbortSignal, options?: LoopRequestOptions) {
   const session = await requireLoadedSession(sessionId, options?.bffUrl)
   if (options?.projectId)
@@ -1699,8 +1774,17 @@ export async function handleChoice(sessionId: string, body: ChoiceBody, emit: Em
       }[]
     }
     const textEdits = confirmed.textEdits || (confirmed.textEdit ? [confirmed.textEdit] : [])
-    const layerImages = confirmed.answers?.find(answer => answer.questionId === 'layer_selection_method' && answer.optionId === 'draw_boxes')?.imageSelections
-    if ((layerImages?.length || textEdits.length) && !sessionWantsStop(session)) {
+    const layerMethod = confirmed.answers?.find(answer => answer.questionId === 'layer_selection_method' && answer.optionId === 'draw_boxes')
+    const layerImages = layerMethod?.imageSelections?.length
+      ? layerMethod.imageSelections
+      : confirmedLayerSelections(session.messages)
+    const reviewPending = Boolean(layerImages.length && layerSplitNeedsConfirm(session.messages))
+    if (reviewPending && !sessionWantsStop(session)) {
+      await appendLayerSelectionReview(session, layerImages, signal)
+      touch(session)
+    }
+    const canDispatchLayers = layerImages.length && !reviewPending && !layerSplitAwaitingAdjust(session.messages)
+    if ((canDispatchLayers || textEdits.length) && !sessionWantsStop(session)) {
       // Confirmed edits already define the request; enqueue them without another planning turn.
       const toolCalls: ToolCall[] = textEdits.length
         ? textEdits.map(edit => ({ id: crypto.randomUUID(), type: 'function', function: { name: 'model_image_text_editor', arguments: JSON.stringify({ image_url: edit.imageUrl }) } }))

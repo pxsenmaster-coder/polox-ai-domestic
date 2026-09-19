@@ -12,6 +12,8 @@ import { isStoredMediaUrl, saveMediaFile } from './localMedia'
 const MAX_IMAGE_BYTES = 30 * 1024 * 1024
 const MAX_VIDEO_BYTES = 200 * 1024 * 1024
 const MAX_ARCHIVE_ATTEMPTS = 12
+const ARCHIVE_IMAGE_TIMEOUT_MS = 45_000
+const ARCHIVE_VIDEO_TIMEOUT_MS = 120_000
 const STALE_JOB_MS = 24 * 60 * 60 * 1000
 const RESUME_INTERVAL_MS = 60 * 1000
 const RESUME_CONCURRENCY = 2
@@ -114,7 +116,7 @@ async function releaseGenerationSlot(job: GenerationJobDocument, _reason?: strin
 async function downloadSource(url: string, preferVideo = false) {
   const response = await fetch(url, {
     redirect: 'follow',
-    signal: AbortSignal.timeout(120000),
+    signal: AbortSignal.timeout(preferVideo ? ARCHIVE_VIDEO_TIMEOUT_MS : ARCHIVE_IMAGE_TIMEOUT_MS),
   })
   if (response.status === 404 || response.status === 410) {
     throw Object.assign(new Error('Generated file expired before it could be saved'), {
@@ -141,6 +143,27 @@ async function downloadSource(url: string, preferVideo = false) {
   }
 }
 async function archiveJob(job: GenerationJobDocument) {
+  const archiveProgress = () => {
+    const assets = job.resultAssets || []
+    const completed = assets.filter(asset => asset.status === 'uploaded' && asset.localUrl && isStoredMediaUrl(asset.localUrl)).length
+    const failed = assets.filter(asset => asset.status === 'failed').length
+    return { completed, total: assets.length, failed, pending: Math.max(0, assets.length - completed - failed) }
+  }
+  const downloadWithRetry = async (url: string, preferVideo: boolean) => {
+    let lastError: unknown
+    for (let attempt = 0; attempt <= 2; attempt++) {
+      try {
+        return await downloadSource(url, preferVideo)
+      }
+      catch (error) {
+        lastError = error
+        if (Boolean((error as { permanent?: boolean }).permanent) || attempt === 2)
+          throw error
+        await new Promise(resolve => setTimeout(resolve, 500 * 2 ** attempt))
+      }
+    }
+    throw lastError instanceof Error ? lastError : new Error('Failed to download generated file')
+  }
   migrateLegacySourceUrls(job)
   if (!needsArchive(job))
     return job
@@ -153,44 +176,90 @@ async function archiveJob(job: GenerationJobDocument) {
   job.state = 'archiving'
   job.archiveAttempts += 1
   job.lastArchiveAt = new Date()
+  job.archiveProgress = archiveProgress()
   await job.save()
-  for (const [index, asset] of job.resultAssets.entries()) {
-    if (asset.status === 'uploaded' && asset.localUrl && isStoredMediaUrl(asset.localUrl))
-      continue
-    try {
-      const downloaded = await downloadSource(asset.sourceUrl, isVideoJob(job))
-      const key = `generator/results/${job.taskId}/${index}.${downloaded.extension}`
-      const localUrl = await saveMediaFile(key, downloaded.buffer, downloaded.contentType)
-      asset.localUrl = localUrl
-      asset.localKey = key
-      asset.contentType = downloaded.contentType
-      asset.status = 'uploaded'
-      asset.error = ''
+  // Download remote provider files concurrently, but serialize mutations and
+  // saves on the shared SQLite document so one layer cannot overwrite another.
+  let saveChain: Promise<void> = Promise.resolve()
+  let archiveSaveError: unknown
+  const persist = (fn: () => void) => {
+    const next = saveChain.then(async () => {
+      fn()
       job.markModified('resultAssets')
+      job.archiveProgress = archiveProgress()
       job.resultUrls = job.resultAssets
         .filter(entry => entry.status === 'uploaded' && entry.localUrl)
         .map(entry => entry.localUrl)
-      await job.save()
-    }
-    catch (error) {
-      const permanent = Boolean((error as {
-        permanent?: boolean
-      }).permanent)
-      asset.status = permanent ? 'failed' : 'pending'
-      asset.error = error instanceof Error ? error.message : 'Failed to store generated file'
-      job.markModified('resultAssets')
-      await job.save()
-      if (permanent) {
-        job.state = 'fail'
-        job.failMsg = asset.error
+      try {
         await job.save()
-        return releaseGenerationSlot(job, job.failMsg)
+        archiveSaveError = undefined
+      }
+      catch (error) {
+        // Keep the worker pool alive. A later serialized save or the resume
+        // loop can retry the same in-memory document when storage is transiently unavailable.
+        archiveSaveError = error
+      }
+    })
+    saveChain = next
+    return next
+  }
+  const queue = job.resultAssets
+    .map((asset, index) => ({ asset, index }))
+    .filter(({ asset }) => !(asset.status === 'uploaded' && asset.localUrl && isStoredMediaUrl(asset.localUrl)))
+  let cursor = 0
+  async function worker() {
+    while (cursor < queue.length) {
+      const item = queue[cursor++]
+      if (!item)
+        return
+      const { asset, index } = item
+      try {
+        const downloaded = await downloadWithRetry(asset.sourceUrl, isVideoJob(job))
+        const key = `generator/results/${job.taskId}/${index}.${downloaded.extension}`
+        const localUrl = await saveMediaFile(key, downloaded.buffer, downloaded.contentType)
+        await persist(() => {
+          asset.localUrl = localUrl
+          asset.localKey = key
+          asset.contentType = downloaded.contentType
+          asset.status = 'uploaded'
+          asset.error = ''
+        })
+      }
+      catch (error) {
+        const permanent = Boolean((error as { permanent?: boolean }).permanent)
+        const message = error instanceof Error ? error.message : 'Failed to store generated file'
+        await persist(() => {
+          asset.status = permanent ? 'failed' : 'pending'
+          asset.error = message
+        })
+        if (permanent) {
+          job.state = 'fail'
+          job.failMsg = message
+        }
       }
     }
+  }
+  const concurrency = isVideoJob(job) ? 1 : 3
+  await Promise.all(Array.from({ length: Math.min(concurrency, Math.max(1, queue.length)) }, () => worker()))
+  await saveChain
+  if (archiveSaveError) {
+    try {
+      await job.save()
+      archiveSaveError = undefined
+    }
+    catch {
+      // The periodic resume loop will retry the archiving job.
+      return job
+    }
+  }
+  if (String(job.state) === 'fail') {
+    await job.save()
+    return releaseGenerationSlot(job, job.failMsg)
   }
   const uploaded = job.resultAssets.filter(asset => asset.status === 'uploaded' && asset.localUrl)
   if (uploaded.length === job.resultAssets.length && uploaded.length > 0) {
     job.state = 'success'
+    job.archiveProgress = archiveProgress()
     job.resultUrls = uploaded.map(asset => asset.localUrl)
     job.failCode = ''
     job.failMsg = ''

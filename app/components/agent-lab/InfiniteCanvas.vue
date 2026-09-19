@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import type { CanvasRect } from '~~/shared/types/canvas'
-import type { GenerationJobPublic, GenerationJobState } from '~~/shared/types/generation'
+import type { CanvasLayerState, CanvasRect } from '~~/shared/types/canvas'
+import type { GenerationJobPublic, GenerationJobState, ImageLayerBoundingBox, ImageLayerPublic } from '~~/shared/types/generation'
 import type { AgentImage } from '~/composables/useAgentLab'
 import type { CanvasCorner, CanvasGuide, CanvasPoint } from '~/utils/infiniteCanvas'
 import { isGenerationActive } from '~~/shared/types/generation'
@@ -36,9 +36,15 @@ interface Asset {
   name: string
   video: boolean
   cutout: boolean
+  layerGroup?: boolean
   state: GenerationJobState
   error: string
   job?: GenerationJobPublic
+}
+interface LayerHistoryEntry {
+  assetId: string
+  before?: CanvasLayerState
+  after?: CanvasLayerState
 }
 const { positions, camera, nextSlot, ready, loadError, markNode, markView, ensure, flush, hideNode } = useCanvasLayout(props.projectId)
 const sourceAssets = computed(() => {
@@ -47,15 +53,44 @@ const sourceAssets = computed(() => {
   const taskIds = new Set<string>()
   const seenImageIds = new Set<string>()
   const seenImageUrls = new Set<string>()
+  const canonicalLayerUrls = new Set(props.jobs
+    .filter(job => isImageLayerSplitterModel(job.model) && Boolean(job.layers?.length))
+    .flatMap(job => job.resultUrls))
   for (const job of props.jobs) {
     taskIds.add(job.taskId)
+    const layerResult = isImageLayerSplitterModel(job.model)
+    if (layerResult) {
+      // The agent history can contain one parent splitter job with complete
+      // layer metadata plus one legacy child job per output URL. Render only
+      // the canonical parent group; otherwise every extracted layer appears
+      // again as an unrelated canvas card.
+      if (!job.layers?.length && job.resultUrls.some(url => canonicalLayerUrls.has(url)))
+        continue
+      const url = job.resultUrls[0] || ''
+      if (url)
+        urls.add(url)
+      const layerName = job.layers?.[0]?.name || 'Layer group'
+      result.push({
+        id: `${job.taskId}:0`,
+        taskId: job.taskId,
+        createdAt: job.createdAt,
+        completedAt: job.completedAt,
+        job,
+        url,
+        name: layerName,
+        prompt: '',
+        video: false,
+        cutout: false,
+        layerGroup: true,
+        state: job.state,
+        error: job.failMsg,
+      })
+      continue
+    }
     for (const [index, url] of (job.resultUrls.length ? job.resultUrls : ['']).entries()) {
       if (url)
         urls.add(url)
-      const layerResult = isImageLayerSplitterModel(job.model)
-      const prompt = layerResult ? '' : job.prompt
-      const layerName = job.layers?.[index]?.name || (index === 0 ? 'Background' : `Layer ${index}`)
-      result.push({ id: `${job.taskId}:${index}`, taskId: job.taskId, createdAt: job.createdAt, completedAt: job.completedAt, job, url, name: layerResult ? layerName : assetName({ id: `${job.taskId}:${index}`, prompt: job.prompt, name: String(job.input.asset_name || matchingAgentAsset(props.images, job.taskId, url)?.name || ''), kind: job.category === 'Video' ? 'video' : 'still', videoMode: String(job.input.videoMode || '') }), prompt, video: job.category === 'Video' || isMediaVideoUrl(url), cutout: /remove.?background|cutout/i.test(job.task), state: job.state, error: job.failMsg })
+      result.push({ id: `${job.taskId}:${index}`, taskId: job.taskId, createdAt: job.createdAt, completedAt: job.completedAt, job, url, name: assetName({ id: `${job.taskId}:${index}`, prompt: job.prompt, name: String(job.input.asset_name || matchingAgentAsset(props.images, job.taskId, url)?.name || ''), kind: job.category === 'Video' ? 'video' : 'still', videoMode: String(job.input.videoMode || '') }), prompt: job.prompt, video: job.category === 'Video' || isMediaVideoUrl(url), cutout: /remove.?background|cutout/i.test(job.task), state: job.state, error: job.failMsg })
     }
   }
   for (const url of urls)
@@ -85,6 +120,23 @@ const latestAsset = computed(() => latestCanvasAsset(sourceAssets.value))
 const surface = ref<HTMLElement>()
 const { width, height } = useElementSize(surface)
 const selected = ref('')
+const selectedLayerId = ref('')
+const editingLayerGroupId = ref('')
+const layerStatusMessage = ref('')
+const editingLayer = computed(() => {
+  const assetId = editingLayerGroupId.value
+  const layerId = selectedLayerId.value
+  if (!assetId || !layerId)
+    return undefined
+  const asset = assets.value.find(item => item.id === assetId)
+  if (!asset?.layerGroup || !asset.job?.layers?.some(layer => layer.id === layerId))
+    return undefined
+  return { assetId, layerId }
+})
+const editorScope = computed<'canvas' | 'layer'>(() => editingLayer.value ? 'layer' : 'canvas')
+function isLayerEditingAsset(assetId: string) {
+  return editingLayer.value?.assetId === assetId
+}
 const selection = ref(new Set<string>())
 const selectedAssets = computed(() => assets.value.filter(asset => selection.value.has(asset.id)))
 const batchIds = computed(() => [...new Set(selectedAssets.value.flatMap(asset => asset.taskId ? [asset.taskId] : []))])
@@ -92,7 +144,7 @@ const deleteIds = computed(() => [...new Set(selectedAssets.value.map(asset => a
 const canBatchDelete = computed(() => selectedAssets.value.every(asset => ['success', 'fail'].includes(asset.state)))
 const exporting = ref(false)
 const exportError = ref('')
-const canExportSelection = computed(() => selectedAssets.value.length > 0 && selectedAssets.value.length <= 100 && selectedAssets.value.every(asset => asset.url && asset.state === 'success'))
+const canExportSelection = computed(() => selectedAssets.value.length > 0 && selectedAssets.value.length <= 100 && selectedAssets.value.every(asset => asset.url && asset.state === 'success' && !asset.layerGroup))
 async function exportAssets(items: Asset[], format: 'file' | 'zip') {
   if (exporting.value)
     return
@@ -144,6 +196,20 @@ const marqueeStyle = computed(() => marquee.value
 watch(selected, (id) => {
   if (id)
     selection.value = new Set([id])
+  if (!id || id !== editingLayerGroupId.value) {
+    selectedLayerId.value = ''
+    editingLayerGroupId.value = ''
+    layerStatusMessage.value = ''
+    clearLayerHistory()
+  }
+})
+watch(editorScope, (scope, previous) => {
+  if (scope !== 'canvas' || previous !== 'layer')
+    return
+  selectedLayerId.value = ''
+  editingLayerGroupId.value = ''
+  layerStatusMessage.value = ''
+  clearLayerHistory()
 })
 watch(assets, (values) => { selection.value = new Set([...selection.value].filter(id => values.some(asset => asset.id === id))) })
 const hand = ref(false)
@@ -155,14 +221,20 @@ const { open } = useMediaLightbox()
 const urlPositions = new Map<string, CanvasRect>()
 let frame = 0
 let pendingMove: { x: number, y: number } | undefined
-let drag: { pointer: number, x: number, y: number, origin: CanvasPoint, id?: string } | undefined
+let drag: { pointer: number, x: number, y: number, origin: CanvasPoint, cardOrigin?: CanvasRect, cameraOrigin?: { x: number, y: number, zoom: number }, id?: string } | undefined
+let layerDrag: { pointer: number, x: number, y: number, assetId: string, layerId: string, before?: CanvasLayerState } | undefined
+let layerResize: { pointer: number, x: number, y: number, assetId: string, layerId: string, corner: CanvasCorner, before?: CanvasLayerState } | undefined
 let observerReady = false
 let resize: { id: string, pointer: number, corner: CanvasCorner, x: number, y: number, origin: CanvasRect } | undefined
 const corners: CanvasCorner[] = ['nw', 'ne', 'sw', 'se']
 const cornerLabels = { nw: 'top left', ne: 'top right', sw: 'bottom left', se: 'bottom right' }
 let wheelTimer: ReturnType<typeof setTimeout> | undefined
+let layerStatusTimer: ReturnType<typeof setTimeout> | undefined
+let completedPointer: number | undefined
 const pointers = new Map<number, CanvasPoint>()
 let pinch: { distance: number, center: CanvasPoint, camera: typeof camera } | undefined
+const layerUndoStack = ref<LayerHistoryEntry[]>([])
+const layerRedoStack = ref<LayerHistoryEntry[]>([])
 
 function persist() { markView() }
 
@@ -282,6 +354,234 @@ function focusAsset(id: string) {
   Object.assign(camera, { x: width.value / 2 - (point.x + point.width / 2) * 0.85, y: height.value / 2 - (point.y + point.height / 2) * 0.85, zoom: 0.85 })
   persist()
 }
+
+function announceLayerStatus(message: string) {
+  layerStatusMessage.value = message
+  clearTimeout(layerStatusTimer)
+  layerStatusTimer = setTimeout(() => { layerStatusMessage.value = '' }, 2800)
+}
+
+function selectLayerForEditing(asset: Asset, layerId: string) {
+  if (!asset.layerGroup || !asset.job?.layers?.length || !asset.job.layers.some(layer => layer.id === layerId))
+    return
+  if (editingLayerGroupId.value !== asset.id) {
+    clearLayerHistory()
+    editingLayerGroupId.value = asset.id
+  }
+  selected.value = asset.id
+  selection.value = new Set([asset.id])
+  selectedLayerId.value = layerId
+  layerStatusMessage.value = ''
+  const layer = asset.job.layers.find(item => item.id === layerId)
+  if (layerEdit(asset, layerId)?.locked)
+    announceLayerStatus(`${layer?.name || 'Layer'} is locked. Unlock it to move.`)
+}
+
+function toggleLayerEditing(asset: Asset) {
+  if (!asset.layerGroup || !asset.job?.layers?.length)
+    return
+  if (editingLayerGroupId.value === asset.id) {
+    editingLayerGroupId.value = ''
+    selectedLayerId.value = ''
+    layerStatusMessage.value = ''
+    return
+  }
+  const layerId = asset.job.layers.find(layer => !layer.url || layer.role !== 'base')?.id || asset.job.layers[0]?.id
+  if (layerId)
+    selectLayerForEditing(asset, layerId)
+}
+
+function layerEdit(asset: Asset, layerId: string) {
+  return positions.value.get(asset.id)?.layerState?.layers.find(edit => edit.id === layerId)
+}
+
+function cloneLayerState(state?: CanvasLayerState) {
+  return state
+    ? { schemaVersion: state.schemaVersion, layers: state.layers.map(layer => ({ ...layer })) }
+    : undefined
+}
+function sameLayerState(left?: CanvasLayerState, right?: CanvasLayerState) {
+  return JSON.stringify(left || null) === JSON.stringify(right || null)
+}
+function recordLayerHistory(entry: LayerHistoryEntry) {
+  if (sameLayerState(entry.before, entry.after))
+    return
+  layerUndoStack.value = [...layerUndoStack.value.slice(-49), entry]
+  layerRedoStack.value = []
+}
+function clearLayerHistory() {
+  layerUndoStack.value = []
+  layerRedoStack.value = []
+}
+function updateLayerEdit(asset: Asset, layerId: string, patch: { hidden?: boolean, locked?: boolean, dx?: number, dy?: number, scaleX?: number, scaleY?: number, zIndex?: number }, scheduleSave = true, recordHistory = true) {
+  const point = positions.value.get(asset.id)
+  if (!point)
+    return
+  const current = point.layerState || { schemaVersion: 1 as const, layers: [] }
+  const before = cloneLayerState(point.layerState)
+  const existing = current.layers.find(edit => edit.id === layerId)
+  const nextLayers = existing
+    ? current.layers.map(edit => edit.id === layerId ? { ...edit, ...patch } : edit)
+    : [...current.layers, { id: layerId, ...patch }]
+  const layerState = { schemaVersion: 1 as const, layers: nextLayers.slice(0, 17) }
+  positions.value = new Map(positions.value).set(asset.id, { ...point, layerState })
+  if (recordHistory)
+    recordLayerHistory({ assetId: asset.id, before, after: cloneLayerState(layerState) })
+  if (scheduleSave) {
+    markNode(asset.id)
+    persist()
+  }
+}
+
+function applyLayerState(assetId: string, state: CanvasLayerState | undefined) {
+  const point = positions.value.get(assetId)
+  if (!point)
+    return
+  const next = { ...point } as CanvasRect
+  if (state)
+    next.layerState = cloneLayerState(state)
+  else
+    delete next.layerState
+  positions.value = new Map(positions.value).set(assetId, next)
+  markNode(assetId)
+  persist()
+}
+function restoreLayerState(assetId: string, state: CanvasLayerState | undefined) {
+  const point = positions.value.get(assetId)
+  if (!point)
+    return
+  const next = { ...point } as CanvasRect
+  if (state)
+    next.layerState = cloneLayerState(state)
+  else
+    delete next.layerState
+  positions.value = new Map(positions.value).set(assetId, next)
+  markNode(assetId)
+}
+function undoLayerEdit() {
+  const entry = layerUndoStack.value.at(-1)
+  if (!entry)
+    return
+  layerUndoStack.value = layerUndoStack.value.slice(0, -1)
+  applyLayerState(entry.assetId, entry.before)
+  layerRedoStack.value = [...layerRedoStack.value.slice(-49), entry]
+}
+function redoLayerEdit() {
+  const entry = layerRedoStack.value.at(-1)
+  if (!entry)
+    return
+  layerRedoStack.value = layerRedoStack.value.slice(0, -1)
+  applyLayerState(entry.assetId, entry.after)
+  layerUndoStack.value = [...layerUndoStack.value.slice(-49), entry]
+}
+
+function toggleLayer(asset: Asset, layerId: string) {
+  if (layerEdit(asset, layerId)?.locked) {
+    announceLayerStatus(`${asset.job?.layers?.find(layer => layer.id === layerId)?.name || 'Layer'} is locked. Unlock it first.`)
+    return
+  }
+  const hidden = layerEdit(asset, layerId)?.hidden === true
+  updateLayerEdit(asset, layerId, { hidden: !hidden })
+  persist()
+}
+
+function nudgeLayer(asset: Asset, layerId: string, dx: number, dy: number) {
+  if (layerEdit(asset, layerId)?.locked) {
+    announceLayerStatus(`${asset.job?.layers?.find(layer => layer.id === layerId)?.name || 'Layer'} is locked. Unlock it first.`)
+    return
+  }
+  const edit = layerEdit(asset, layerId)
+  updateLayerEdit(asset, layerId, { dx: (edit?.dx || 0) + dx, dy: (edit?.dy || 0) + dy })
+  persist()
+}
+
+function onLayerPointerdown(asset: Asset, payload: { event: PointerEvent, layer: ImageLayerPublic }) {
+  if (!asset.job?.layers?.length || !isLayerEditingAsset(asset.id))
+    return
+  const event = payload.event
+  const layer = payload.layer
+  selected.value = asset.id
+  selection.value = new Set([asset.id])
+  selectedLayerId.value = layer.id
+  if (layerEdit(asset, layer.id)?.locked) {
+    announceLayerStatus(`${layer.name || 'Layer'} is locked. Unlock it to move.`)
+    return
+  }
+  event.preventDefault()
+  layerDrag = { pointer: event.pointerId, x: event.clientX, y: event.clientY, assetId: asset.id, layerId: layer.id, before: cloneLayerState(positions.value.get(asset.id)?.layerState) }
+  drag = undefined
+  resize = undefined
+  pinch = undefined
+  pointers.clear()
+  surface.value?.setPointerCapture(event.pointerId)
+}
+function onLayerResizeStart(asset: Asset, payload: { event: PointerEvent, layer: ImageLayerPublic, corner: CanvasCorner }) {
+  if (!asset.job?.layers?.length || !isLayerEditingAsset(asset.id))
+    return
+  const event = payload.event
+  selected.value = asset.id
+  selection.value = new Set([asset.id])
+  selectedLayerId.value = payload.layer.id
+  if (layerEdit(asset, payload.layer.id)?.locked) {
+    announceLayerStatus(`${payload.layer.name || 'Layer'} is locked. Unlock it to resize.`)
+    return
+  }
+  event.preventDefault()
+  layerResize = { pointer: event.pointerId, x: event.clientX, y: event.clientY, assetId: asset.id, layerId: payload.layer.id, corner: payload.corner, before: cloneLayerState(positions.value.get(asset.id)?.layerState) }
+  drag = undefined
+  resize = undefined
+  layerDrag = undefined
+  pinch = undefined
+  pointers.clear()
+  surface.value?.setPointerCapture(event.pointerId)
+}
+
+function scaleLayer(asset: Asset, layerId: string, factor: number) {
+  if (layerEdit(asset, layerId)?.locked) {
+    announceLayerStatus(`${asset.job?.layers?.find(layer => layer.id === layerId)?.name || 'Layer'} is locked. Unlock it first.`)
+    return
+  }
+  const edit = layerEdit(asset, layerId)
+  const scaleX = Math.max(0.01, Math.min(100, (edit?.scaleX || 1) * factor))
+  const scaleY = Math.max(0.01, Math.min(100, (edit?.scaleY || 1) * factor))
+  updateLayerEdit(asset, layerId, { scaleX, scaleY })
+  persist()
+}
+
+function toggleLayerLock(asset: Asset, layerId: string) {
+  const locked = layerEdit(asset, layerId)?.locked === true
+  updateLayerEdit(asset, layerId, { locked: !locked })
+  announceLayerStatus(locked ? 'Layer unlocked. You can move it now.' : 'Layer locked. Unlock it to move.')
+  persist()
+}
+
+function reorderLayer(asset: Asset, layerId: string, direction: -1 | 1) {
+  if (layerEdit(asset, layerId)?.locked) {
+    announceLayerStatus(`${asset.job?.layers?.find(layer => layer.id === layerId)?.name || 'Layer'} is locked. Unlock it first.`)
+    return
+  }
+  const layers = asset.job?.layers || []
+  const effective = layers.map(layer => ({
+    id: layer.id,
+    zIndex: layerEdit(asset, layer.id)?.zIndex ?? layer.zIndex,
+  })).sort((a, b) => a.zIndex - b.zIndex || a.id.localeCompare(b.id))
+  const index = effective.findIndex(layer => layer.id === layerId)
+  const target = index < 0 ? -1 : index + direction
+  if (target < 0 || target >= effective.length)
+    return
+  const currentLayer = effective[index]!
+  const targetLayer = effective[target]!
+  if (layerEdit(asset, targetLayer.id)?.locked) {
+    announceLayerStatus(`${asset.job?.layers?.find(layer => layer.id === targetLayer.id)?.name || 'Layer'} is locked. Unlock the adjacent layer first.`)
+    return
+  }
+  const before = cloneLayerState(positions.value.get(asset.id)?.layerState)
+  updateLayerEdit(asset, currentLayer.id, { zIndex: targetLayer.zIndex }, false, false)
+  updateLayerEdit(asset, targetLayer.id, { zIndex: currentLayer.zIndex }, false, false)
+  recordLayerHistory({ assetId: asset.id, before, after: cloneLayerState(positions.value.get(asset.id)?.layerState) })
+  markNode(asset.id)
+  persist()
+}
 async function focusMedia(url: string) {
   const asset = assets.value.find(item => item.url === url)
   if (!asset)
@@ -374,10 +674,14 @@ function arrange() {
 function down(event: PointerEvent, id?: string) {
   if (!ready.value || loadError.value)
     return
+  if (completedPointer === event.pointerId)
+    completedPointer = undefined
   if (event.button !== 0 && event.button !== 1)
     return
   const target = event.target as HTMLElement
   if (target.closest('button, a'))
+    return
+  if (id && isLayerEditingAsset(id) && !hand.value && !space.value)
     return
   event.preventDefault()
   alignmentGuides.value = []
@@ -416,7 +720,14 @@ function down(event: PointerEvent, id?: string) {
   }
   const nodeId = !hand.value && !space.value && event.button === 0 ? id : undefined
   selected.value = nodeId || ''
-  drag = { pointer: event.pointerId, x: event.clientX, y: event.clientY, origin: nodeId ? { ...positions.value.get(nodeId)! } : { x: camera.x, y: camera.y }, id: nodeId }
+  drag = {
+    pointer: event.pointerId,
+    x: event.clientX,
+    y: event.clientY,
+    origin: nodeId ? { x: positions.value.get(nodeId)!.x, y: positions.value.get(nodeId)!.y } : { x: camera.x, y: camera.y },
+    ...(nodeId ? { cardOrigin: { ...positions.value.get(nodeId)! } } : { cameraOrigin: { x: camera.x, y: camera.y, zoom: camera.zoom } }),
+    id: nodeId,
+  }
 }
 function startResize(event: PointerEvent, id: string, corner: CanvasCorner) {
   if (event.button !== 0 || !ready.value || loadError.value)
@@ -440,6 +751,41 @@ function resizeKey(event: KeyboardEvent, id: string, corner: CanvasCorner) {
   positions.value = new Map(positions.value).set(id, resizeFromCorner(positions.value.get(id)!, corner, ...shift))
   markNode(id)
 }
+function layerPreviewSize(point: CanvasRect) {
+  return {
+    width: Math.max(1, point.width),
+    height: Math.max(1, point.height - CARD_CHROME_HEIGHT),
+  }
+}
+function layerBaseRect(layer: ImageLayerPublic) {
+  const box: ImageLayerBoundingBox = layer.renderMode === 'cropped' && layer.boundingBox
+    ? layer.boundingBox
+    : [0, 0, 1000, 1000]
+  return {
+    left: box[0],
+    top: box[1],
+    width: Math.max(1, box[2] - box[0]),
+    height: Math.max(1, box[3] - box[1]),
+  }
+}
+function layerCanvasRect(layer: ImageLayerPublic, edit?: CanvasLayerState['layers'][number]) {
+  const base = layerBaseRect(layer)
+  const scaleX = edit?.scaleX || 1
+  const scaleY = edit?.scaleY || 1
+  return {
+    left: base.left + (edit?.dx || 0),
+    top: base.top + (edit?.dy || 0),
+    width: base.width * scaleX,
+    height: base.height * scaleY,
+  }
+}
+function layerDelta(point: CanvasRect, startX: number, startY: number, currentX: number, currentY: number) {
+  const preview = layerPreviewSize(point)
+  return {
+    dx: (currentX - startX) / camera.zoom / preview.width * 1000,
+    dy: (currentY - startY) / camera.zoom / preview.height * 1000,
+  }
+}
 function applyMove() {
   frame = 0
   if (pinch && pointers.size === 2) {
@@ -458,6 +804,61 @@ function applyMove() {
     interacting.value = true
     return
   }
+  if (layerResize && pendingMove) {
+    const asset = assets.value.find(item => item.id === layerResize!.assetId)
+    const point = asset ? positions.value.get(asset.id) : undefined
+    if (!asset || !point || !asset.job?.layers?.length)
+      return
+    const layer = asset.job.layers.find(item => item.id === layerResize!.layerId)
+    const origin = layerResize.before?.layers.find(item => item.id === layerResize!.layerId)
+    if (!layer)
+      return
+    const base = layerBaseRect(layer)
+    const current = layerCanvasRect(layer, origin)
+    const { width: previewWidth, height: previewHeight } = layerPreviewSize(point)
+    const deltaX = (pendingMove.x - layerResize.x) / camera.zoom / previewWidth * 1000
+    const deltaY = (pendingMove.y - layerResize.y) / camera.zoom / previewHeight * 1000
+    let left = current.left + (layerResize.corner.includes('w') ? deltaX : 0)
+    let top = current.top + (layerResize.corner.includes('n') ? deltaY : 0)
+    let right = current.left + current.width + (layerResize.corner.includes('e') ? deltaX : 0)
+    let bottom = current.top + current.height + (layerResize.corner.includes('s') ? deltaY : 0)
+    const minWidth = Math.max(5, base.width * 0.05)
+    const minHeight = Math.max(5, base.height * 0.05)
+    const maxWidth = base.width * 20
+    const maxHeight = base.height * 20
+    const width = Math.max(minWidth, Math.min(maxWidth, right - left))
+    const height = Math.max(minHeight, Math.min(maxHeight, bottom - top))
+    if (layerResize.corner.includes('w'))
+      left = right - width
+    else
+      right = left + width
+    if (layerResize.corner.includes('n'))
+      top = bottom - height
+    else
+      bottom = top + height
+    updateLayerEdit(asset, layerResize.layerId, {
+      dx: left - base.left,
+      dy: top - base.top,
+      scaleX: Math.max(0.01, Math.min(100, width / base.width)),
+      scaleY: Math.max(0.01, Math.min(100, height / base.height)),
+    }, false, false)
+    interacting.value = true
+    return
+  }
+  if (layerDrag && pendingMove) {
+    const asset = assets.value.find(item => item.id === layerDrag!.assetId)
+    const point = asset ? positions.value.get(asset.id) : undefined
+    if (!asset || !point || !asset.job?.layers?.length)
+      return
+    const origin = layerDrag.before?.layers.find(item => item.id === layerDrag!.layerId)
+    const { dx: deltaX, dy: deltaY } = layerDelta(point, layerDrag.x, layerDrag.y, pendingMove.x, pendingMove.y)
+    updateLayerEdit(asset, layerDrag.layerId, {
+      dx: (origin?.dx || 0) + deltaX,
+      dy: (origin?.dy || 0) + deltaY,
+    }, false, false)
+    interacting.value = true
+    return
+  }
   if (!drag || !pendingMove)
     return
   const dx = pendingMove.x - drag.x
@@ -466,7 +867,7 @@ function applyMove() {
     return
   interacting.value = true
   if (drag.id) {
-    const proposed = { ...positions.value.get(drag.id)!, x: drag.origin.x + dx / camera.zoom, y: drag.origin.y + dy / camera.zoom }
+    const proposed = { ...positions.value.get(drag.id)!, x: drag.cardOrigin!.x + dx / camera.zoom, y: drag.cardOrigin!.y + dy / camera.zoom }
     const targets = visible.value.filter(asset => asset.id !== drag!.id).map(asset => asset.point)
     const snapped = snapCanvasRect(proposed, targets, camera.zoom)
     const point = snapped.rect
@@ -509,20 +910,68 @@ function move(event: PointerEvent) {
       frame = requestAnimationFrame(applyMove)
     return
   }
-  if ((!drag || drag.pointer !== event.pointerId) && (!resize || resize.pointer !== event.pointerId))
+  if ((!drag || drag.pointer !== event.pointerId) && (!resize || resize.pointer !== event.pointerId) && (!layerDrag || layerDrag.pointer !== event.pointerId) && (!layerResize || layerResize.pointer !== event.pointerId))
     return
   pendingMove = { x: event.clientX, y: event.clientY }
   if (!frame)
     frame = requestAnimationFrame(applyMove)
 }
-function end() {
-  if (frame)
+function end(cancelled = false) {
+  if (frame) {
     cancelAnimationFrame(frame)
-  applyMove()
-  const changedId = resize?.id || drag?.id
-  if (changedId && interacting.value)
+    frame = 0
+  }
+  if (cancelled) {
+    if (drag?.id) {
+      const point = positions.value.get(drag.id)
+      if (point) {
+        positions.value = new Map(positions.value).set(drag.id, { ...drag.cardOrigin! })
+        const asset = assets.value.find(item => item.id === drag!.id)
+        if (asset?.url)
+          urlPositions.set(asset.url, { ...drag.cardOrigin! })
+        markNode(drag.id)
+      }
+    }
+    else if (drag?.cameraOrigin) {
+      Object.assign(camera, drag.cameraOrigin)
+    }
+    if (resize) {
+      positions.value = new Map(positions.value).set(resize.id, { ...resize.origin })
+      const asset = assets.value.find(item => item.id === resize!.id)
+      if (asset?.url)
+        urlPositions.set(asset.url, { ...resize.origin })
+      markNode(resize.id)
+    }
+    if (pinch)
+      Object.assign(camera, pinch.camera)
+    if (layerDrag)
+      restoreLayerState(layerDrag.assetId, layerDrag.before)
+    if (layerResize)
+      restoreLayerState(layerResize.assetId, layerResize.before)
+  }
+  else {
+    applyMove()
+  }
+  const changedId = resize?.id || drag?.id || layerDrag?.assetId || layerResize?.assetId
+  if (changedId && interacting.value && !cancelled)
     markNode(changedId)
-  const pointer = marquee.value?.pointer ?? resize?.pointer ?? drag?.pointer
+  if (layerDrag && interacting.value && !cancelled) {
+    const point = positions.value.get(layerDrag.assetId)
+    recordLayerHistory({
+      assetId: layerDrag.assetId,
+      before: layerDrag.before,
+      after: cloneLayerState(point?.layerState),
+    })
+  }
+  if (layerResize && interacting.value && !cancelled) {
+    const point = positions.value.get(layerResize.assetId)
+    recordLayerHistory({
+      assetId: layerResize.assetId,
+      before: layerResize.before,
+      after: cloneLayerState(point?.layerState),
+    })
+  }
+  const pointer = marquee.value?.pointer ?? resize?.pointer ?? drag?.pointer ?? layerDrag?.pointer ?? layerResize?.pointer
   marquee.value = undefined
   resize = undefined
   pinch = undefined
@@ -530,11 +979,26 @@ function end() {
   if (pointer !== undefined && surface.value?.hasPointerCapture(pointer))
     surface.value.releasePointerCapture(pointer)
   drag = undefined
+  layerDrag = undefined
+  layerResize = undefined
   pendingMove = undefined
   alignmentGuides.value = []
   interacting.value = false
   if (observerReady)
     persist()
+}
+function cancelPointer(event?: PointerEvent) {
+  // Releasing capture after a normal pointerup also emits lostpointercapture.
+  // Ignore that synthetic loss so a completed drag is not rolled back.
+  if (event?.pointerId !== undefined && completedPointer === event.pointerId) {
+    completedPointer = undefined
+    return
+  }
+  end(true)
+}
+function completePointer(event: PointerEvent) {
+  completedPointer = event.pointerId
+  end(false)
 }
 function wheel(event: WheelEvent) {
   interacting.value = true
@@ -554,6 +1018,38 @@ function wheel(event: WheelEvent) {
 function keydown(event: KeyboardEvent) {
   if ((event.target as HTMLElement).closest('button, input, a'))
     return
+  if (event.metaKey || event.ctrlKey) {
+    if (event.code === 'KeyZ') {
+      if (editorScope.value !== 'layer')
+        return
+      event.preventDefault()
+      if (event.shiftKey)
+        redoLayerEdit()
+      else
+        undoLayerEdit()
+      return
+    }
+    if (event.code === 'KeyY') {
+      if (editorScope.value !== 'layer')
+        return
+      event.preventDefault()
+      redoLayerEdit()
+      return
+    }
+  }
+  const activeLayer = editingLayer.value
+  if (activeLayer && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.code)) {
+    const asset = assets.value.find(item => item.id === activeLayer.assetId)
+    if (asset) {
+      event.preventDefault()
+      const step = event.shiftKey ? 10 : 2
+      const shifts: Record<string, [number, number]> = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }
+      const shift = shifts[event.code]
+      if (shift)
+        nudgeLayer(asset, activeLayer.layerId, shift[0], shift[1])
+      return
+    }
+  }
   if (['Space', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Equal', 'Minus', 'Digit0'].includes(event.code))
     event.preventDefault()
   if (event.code === 'Space')
@@ -608,10 +1104,29 @@ function view(asset: Asset) {
   if (asset.url && asset.state === 'success')
     open({ url: asset.url, kind: asset.video ? 'video' : 'image', alt: asset.prompt || asset.name, cutout: asset.cutout })
 }
+function assetStatusLabel(asset: Asset) {
+  if (asset.state === 'fail') {
+    if (/no result urls|empty result/i.test(asset.error))
+      return 'Ark 没有返回图片地址，可重试'
+    if (/timed out|timeout/i.test(asset.error))
+      return 'Ark 生成超时，可重试'
+    if (/status url/i.test(asset.error))
+      return 'Ark 任务缺少状态地址，请重试'
+    return asset.error || 'Generation failed'
+  }
+  if (asset.state === 'archiving') {
+    const progress = asset.job?.archiveProgress
+    if (progress?.total)
+      return ['Saving layers ', progress.completed, '/', progress.total, progress.failed ? [' · ', progress.failed, ' failed'].join('') : '', '…'].join('')
+    return 'Saving generated layers…'
+  }
+  return 'Generating…'
+}
 onBeforeUnmount(() => {
   clearTimeout(wheelTimer)
+  clearTimeout(layerStatusTimer)
   cancelAnimationFrame(frame)
-  end()
+  end(true)
   void flush(true)
 })
 </script>
@@ -623,7 +1138,7 @@ onBeforeUnmount(() => {
       class="canvas-surface absolute inset-0 overflow-hidden outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
       :class="hand || space || interacting ? 'cursor-grabbing' : 'cursor-grab'"
       :style="{ backgroundSize: `${24 * camera.zoom}px ${24 * camera.zoom}px`, backgroundPosition: `${camera.x}px ${camera.y}px` }"
-      @pointerdown="down($event)" @pointermove="move" @pointerup="end" @pointercancel="end" @lostpointercapture="end"
+      @pointerdown="down($event)" @pointermove="move" @pointerup="completePointer" @pointercancel="cancelPointer" @lostpointercapture="cancelPointer"
       @wheel.prevent="wheel" @keydown="keydown" @keyup="space = false" @blur="space = false"
     >
       <div class="absolute origin-top-left" :style="{ 'transform': `translate(${camera.x}px, ${camera.y}px) scale(${camera.zoom})`, '--canvas-selection-width': selectionWidth }">
@@ -646,8 +1161,19 @@ onBeforeUnmount(() => {
             {{ asset.name }}
           </p>
           <div class="flex items-center justify-center overflow-hidden rounded-xl" :style="{ height: `${asset.point.height - CARD_CHROME_HEIGHT}px` }" :class="asset.url && asset.state === 'success' && !asset.video ? 'bg-transparent' : 'bg-muted/40'">
+            <ToolsImageLayerStackPreview
+              v-if="asset.layerGroup && asset.job?.layers?.length && asset.state === 'success'"
+              :job="asset.job"
+              compact
+              :layer-state="asset.point.layerState"
+              :selected-layer-id="selectedLayerId"
+              :interactive="isLayerEditingAsset(asset.id)"
+              @dimensions="fitAsset(asset.id, $event)"
+              @layer-pointerdown="onLayerPointerdown(asset, $event)"
+              @layer-resize-start="onLayerResizeStart(asset, $event)"
+            />
             <AgentLabInfiniteCanvasMedia
-              v-if="asset.url && asset.state === 'success'"
+              v-else-if="asset.url && asset.state === 'success'"
               :key="asset.url"
               :url="asset.url"
               :alt="(asset.prompt || asset.name).slice(0, 300)"
@@ -661,12 +1187,12 @@ onBeforeUnmount(() => {
                 {{ asset.name }}
               </p>
               <p v-if="asset.state !== 'success'" class="line-clamp-3">
-                {{ asset.state === 'fail' ? asset.error || 'Generation failed' : 'Generating…' }}
+                {{ assetStatusLabel(asset) }}
               </p>
             </div>
           </div>
           <AgentLabCardBorder v-if="isGenerationActive(asset.state)" tone="generating" class="z-10" />
-          <template v-if="selection.size === 1 && selection.has(asset.id)">
+          <template v-if="selection.size === 1 && selection.has(asset.id) && editorScope === 'canvas'">
             <button
               v-for="corner in corners" :key="corner"
               class="canvas-resize" :class="`canvas-resize-${corner}`"
@@ -699,19 +1225,80 @@ onBeforeUnmount(() => {
       <p class="line-clamp-2 max-w-80 text-xs" :title="asset.name">
         {{ asset.name.replace(/^(Image|Video) · /, '') }}
       </p>
+      <div v-if="asset.layerGroup && asset.job?.layers?.length" class="flex max-h-40 flex-col gap-1 overflow-y-auto rounded-lg border border-border/70 p-1">
+        <div v-for="layer in asset.job.layers" :key="layer.id" class="flex items-center gap-1 rounded px-1 py-0.5 text-[11px]" :class="selectedLayerId === layer.id ? 'bg-accent text-foreground' : 'text-muted-foreground'">
+          <button class="min-w-0 flex-1 truncate text-left hover:text-foreground" :title="layer.name" @click.stop="selectLayerForEditing(asset, layer.id)">
+            <Icon :name="layerEdit(asset, layer.id)?.hidden ? 'i-lucide-eye-off' : 'i-lucide-eye'" class="mr-1 inline-block size-3" />
+            {{ layer.name }}
+          </button>
+          <button class="canvas-action" :aria-label="`${layerEdit(asset, layer.id)?.locked ? 'Unlock' : 'Lock'} ${layer.name}`" :title="layerEdit(asset, layer.id)?.locked ? 'Unlock layer' : 'Lock layer'" @click.stop="toggleLayerLock(asset, layer.id)">
+            <Icon :name="layerEdit(asset, layer.id)?.locked ? 'i-lucide-lock' : 'i-lucide-unlock'" />
+          </button>
+          <button class="canvas-action" :aria-label="`Toggle ${layer.name}`" :title="layerEdit(asset, layer.id)?.hidden ? 'Show layer' : 'Hide layer'" @click.stop="toggleLayer(asset, layer.id)">
+            <Icon :name="layerEdit(asset, layer.id)?.hidden ? 'i-lucide-eye' : 'i-lucide-eye-off'" />
+          </button>
+          <button class="canvas-action" :aria-label="`Move ${layer.name} forward`" title="Move forward" @click.stop="reorderLayer(asset, layer.id, 1)">
+            <Icon name="i-lucide-chevron-up" />
+          </button>
+          <button class="canvas-action" :aria-label="`Move ${layer.name} backward`" title="Move backward" @click.stop="reorderLayer(asset, layer.id, -1)">
+            <Icon name="i-lucide-chevron-down" />
+          </button>
+        </div>
+      </div>
+      <button
+        v-if="asset.layerGroup && asset.job?.layers?.length"
+        class="flex items-center justify-center gap-1 rounded-lg border border-border/70 px-2 py-1 text-[11px] hover:bg-accent"
+        :aria-pressed="isLayerEditingAsset(asset.id)"
+        @click.stop="toggleLayerEditing(asset)"
+      >
+        <Icon :name="isLayerEditingAsset(asset.id) ? 'i-lucide-check' : 'i-lucide-move'" />
+        {{ isLayerEditingAsset(asset.id) ? 'Finish layer editing' : 'Edit layers' }}
+      </button>
+      <p v-if="isLayerEditingAsset(asset.id) || (layerStatusMessage && selected === asset.id)" class="text-[10px] text-muted-foreground" role="status" aria-live="polite">
+        {{ layerStatusMessage || 'Select a layer, then drag it on the canvas.' }}
+      </p>
+      <div v-if="isLayerEditingAsset(asset.id)" class="flex items-center justify-end gap-1">
+        <button class="canvas-action" aria-label="Undo layer edit" title="Undo layer edit (Ctrl/Cmd+Z)" :disabled="!layerUndoStack.length" @click.stop="undoLayerEdit">
+          <Icon name="i-lucide-undo-2" />
+        </button>
+        <button class="canvas-action" aria-label="Redo layer edit" title="Redo layer edit (Ctrl/Cmd+Shift+Z)" :disabled="!layerRedoStack.length" @click.stop="redoLayerEdit">
+          <Icon name="i-lucide-redo-2" />
+        </button>
+      </div>
+      <div v-if="isLayerEditingAsset(asset.id) && selectedLayerId && asset.job?.layers?.some(layer => layer.id === selectedLayerId)" class="flex items-center justify-between gap-1 rounded-lg border border-border/70 p-1">
+        <span class="truncate px-1 text-[10px] text-muted-foreground">Adjust layer</span>
+        <button class="canvas-action" aria-label="Move layer left" title="Move left" @click.stop="nudgeLayer(asset, selectedLayerId, -10, 0)">
+          <Icon name="i-lucide-arrow-left" />
+        </button>
+        <button class="canvas-action" aria-label="Move layer right" title="Move right" @click.stop="nudgeLayer(asset, selectedLayerId, 10, 0)">
+          <Icon name="i-lucide-arrow-right" />
+        </button>
+        <button class="canvas-action" aria-label="Move layer up" title="Move up" @click.stop="nudgeLayer(asset, selectedLayerId, 0, -10)">
+          <Icon name="i-lucide-arrow-up" />
+        </button>
+        <button class="canvas-action" aria-label="Move layer down" title="Move down" @click.stop="nudgeLayer(asset, selectedLayerId, 0, 10)">
+          <Icon name="i-lucide-arrow-down" />
+        </button>
+        <button class="canvas-action" aria-label="Scale layer down" title="Scale down" @click.stop="scaleLayer(asset, selectedLayerId, 0.95)">
+          <Icon name="i-lucide-minus" />
+        </button>
+        <button class="canvas-action" aria-label="Scale layer up" title="Scale up" @click.stop="scaleLayer(asset, selectedLayerId, 1.05)">
+          <Icon name="i-lucide-plus" />
+        </button>
+      </div>
       <div class="flex items-center justify-between text-xs text-muted-foreground">
         <span>{{ asset.video ? 'VIDEO' : 'IMAGE' }}</span>
         <div class="flex gap-1">
           <button class="canvas-action" aria-label="View details" title="View details" @click="detailAsset = asset">
             <Icon name="i-lucide-info" />
           </button>
-          <button v-if="asset.url && asset.state === 'success'" class="canvas-action" aria-label="Open result" @click="view(asset)">
+          <button v-if="asset.url && asset.state === 'success' && !asset.layerGroup" class="canvas-action" aria-label="Open result" @click="view(asset)">
             <Icon name="i-lucide-maximize-2" />
           </button>
-          <button v-if="asset.url && asset.state === 'success'" class="canvas-action" aria-label="Export original file" :title="exporting ? 'Exporting…' : 'Export original file'" :disabled="exporting" @click="exportAssets([asset], 'file')">
+          <button v-if="asset.url && asset.state === 'success' && !asset.layerGroup" class="canvas-action" aria-label="Export original file" :title="exporting ? 'Exporting…' : 'Export original file'" :disabled="exporting" @click="exportAssets([asset], 'file')">
             <Icon :name="exporting ? 'i-lucide-loader-circle' : 'i-lucide-download'" :class="{ 'animate-spin': exporting }" />
           </button>
-          <button v-if="showAttach && asset.url && !asset.video && asset.state === 'success'" class="canvas-action" aria-label="Use as reference" @click="emit('attach', { urls: [asset.url], prompt: asset.prompt })">
+          <button v-if="showAttach && asset.url && !asset.video && asset.state === 'success' && !asset.layerGroup" class="canvas-action" aria-label="Use as reference" @click="emit('attach', { urls: [asset.url], prompt: asset.prompt })">
             <Icon name="i-lucide-paperclip" />
           </button>
           <button v-if="showMove && asset.taskId" class="canvas-action" aria-label="Move to project" @click="emit('move', asset.taskId)">

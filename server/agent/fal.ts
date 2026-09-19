@@ -31,14 +31,15 @@ async function sleep(ms: number, signal?: AbortSignal) {
   if (signal?.aborted)
     throw new Error('Generation aborted')
   await new Promise<void>((resolve, reject) => {
-    const timer = setTimeout(() => {
-      signal?.removeEventListener('abort', onAbort)
-      resolve()
-    }, ms)
+    let timer: ReturnType<typeof setTimeout>
     const onAbort = () => {
       clearTimeout(timer)
       reject(new Error('Generation aborted'))
     }
+    timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort)
+      resolve()
+    }, ms)
     signal?.addEventListener('abort', onAbort, { once: true })
   })
 }

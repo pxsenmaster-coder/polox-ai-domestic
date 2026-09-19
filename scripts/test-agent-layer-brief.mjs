@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { confirmedLayerSelection, hasLayerSourceImage, layerSplitNeedsPlan, layerSplitNeedsSummary, needsLayerDescriptionCard } from '../server/agent/layerSplitBrief.ts'
-import { validateLayerSelection } from '../shared/utils/agentLayerSelection.ts'
+import { confirmedLayerSelection, hasLayerSourceImage, layerSplitAwaitingAdjust, layerSplitNeedsConfirm, layerSplitNeedsPlan, layerSplitNeedsSummary, needsLayerDescriptionCard } from '../server/agent/layerSplitBrief.ts'
+import { layerSelectionOverlaySvg, validateLayerSelection } from '../shared/utils/agentLayerSelection.ts'
 
 const mention = { role: 'user', content: '@[Image Layer Splitter](model:image-layer-splitter)' }
 const upload = { role: 'user', content: [{ type: 'text', text: 'Use the attached still(s).\n\nAttached stills:\n1. https://example.com/image.png' }, { type: 'image_url', image_url: { url: 'https://example.com/image.png' } }] }
@@ -34,6 +34,25 @@ test('drawn boxes are validated and unblock the exact selection', () => {
   assert.equal(layerSplitNeedsPlan([mention, upload, result]), false)
   assert.deepEqual(confirmedLayerSelection([mention, upload, result]), selection)
   assert.equal(confirmedLayerSelection([mention, upload, result, { role: 'user', content: 'Now extract a different object.' }]), null)
+})
+
+test('drawn boxes require visual confirmation before generation', () => {
+  const methodCall = { role: 'assistant', tool_calls: [{ id: 'method', function: { name: 'ask_user', arguments: JSON.stringify({ questions: [{ id: 'layer_selection_method' }] }) } }] }
+  const methodResult = { role: 'tool', tool_call_id: 'method', content: JSON.stringify({ ok: true, answers: [{ questionId: 'layer_selection_method', optionId: 'draw_boxes', imageSelections: [{ imageUrl: 'image', regions: [[10, 20, 400, 800]], boxedImageUrl: 'http://localhost:3001/media/boxes.png' }] }] }) }
+  const confirmCall = { role: 'assistant', tool_calls: [{ id: 'confirm', function: { name: 'ask_user', arguments: JSON.stringify({ questions: [{ id: 'layer_split_confirm' }] }) } }] }
+  const confirmed = { role: 'tool', tool_call_id: 'confirm', content: JSON.stringify({ ok: true, answers: [{ questionId: 'layer_split_confirm', optionId: 'confirm' }] }) }
+  const messages = [mention, upload, methodCall, methodResult]
+  assert.equal(layerSplitNeedsConfirm(messages), true)
+  assert.equal(layerSplitNeedsConfirm([...messages, confirmCall, confirmed]), false)
+  const adjusted = { role: 'tool', tool_call_id: 'confirm', content: JSON.stringify({ ok: true, answers: [{ questionId: 'layer_split_confirm', optionId: 'adjust' }] }) }
+  assert.equal(layerSplitAwaitingAdjust([...messages, confirmCall, adjusted]), true)
+})
+
+test('boxed overlay SVG renders numbered regions without changing source coordinates', () => {
+  const svg = layerSelectionOverlaySvg([[100, 200, 400, 800]], 1000, 500)
+  assert.match(svg, /<svg[^>]+width="1000"[^>]+height="500"/)
+  assert.match(svg, /<rect x="100" y="100" width="300" height="300"/)
+  assert.match(svg, />1<\/text>/)
 })
 
 test('invalid boxes and unrelated image URLs cannot be submitted', () => {

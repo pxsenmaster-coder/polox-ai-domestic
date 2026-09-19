@@ -116,7 +116,6 @@ function resolveWidget(key: string, property: SchemaProperty, placement: FieldPl
 }
 
 function resolveDefaultValue(key: string, property: SchemaProperty, widget: FieldWidget) {
-
   if (property.default !== undefined)
     return property.default
 

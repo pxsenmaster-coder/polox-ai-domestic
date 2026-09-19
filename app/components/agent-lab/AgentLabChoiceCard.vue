@@ -37,6 +37,8 @@ const imageSelections = computed(() => (props.sourceImages || []).map(image => (
 })))
 const selecting = ref(false)
 const drawing = computed(() => selections.value.layer_selection_method?.optionId === 'draw_boxes')
+const confirmingLayers = computed(() => questions.value.some(question => question.id === 'layer_split_confirm'))
+const boxedPreviewImages = computed(() => props.choice.boxedPreviewImages || [])
 watch(() => props.sourceImages, (images) => {
   if (!images?.some(image => image.url === sourceUrl.value))
     sourceUrl.value = images?.[0]?.url || ''
@@ -196,6 +198,24 @@ const resolvedAnswers = computed(() => {
 
     <CardContent v-if="isPending" class="px-4">
       <div class="flex flex-col gap-5">
+        <section
+          v-if="confirmingLayers && boxedPreviewImages.length"
+          class="flex min-w-0 flex-col gap-2"
+          aria-label="Selection preview with boxes"
+        >
+          <p class="text-sm text-muted-foreground">
+            Selection preview
+          </p>
+          <div class="flex flex-col gap-3">
+            <img
+              v-for="(preview, index) in boxedPreviewImages"
+              :key="preview.id"
+              :src="preview.url"
+              :alt="`Boxed selection preview ${index + 1}`"
+              class="max-h-80 w-full rounded-xl border border-border object-contain bg-muted/30"
+            >
+          </div>
+        </section>
         <fieldset
           v-for="question in questions"
           :key="question.id"

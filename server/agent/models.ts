@@ -1,7 +1,7 @@
 import type { AgentSession } from './session'
 import type { AgentEvent, AgentImage } from './types'
 import { AGENT_MODELS, findAgentModelTool, readModelMentions, validateAgentModelInput } from '~~/shared/utils/agentModels'
-import { arkRequestModel, isArkGenerateModel } from '~~/shared/utils/arkSeedream'
+import { ARK_SEEDREAM_LAYER_MODEL, arkRequestModel, isArkGenerateModel } from '~~/shared/utils/arkSeedream'
 import { textEditPrompt } from '~~/shared/utils/imageTextEditor'
 import { GenerationJob } from '../models/generationJob'
 import { falEndpoint } from '../utils/falInput'
@@ -9,7 +9,8 @@ import { sanitizeGenerateInput } from '../utils/generateInput'
 import { refreshGenerationJob } from '../utils/generationPipeline'
 import { toPublicJob } from '../utils/generationResults'
 import { confirmedTextEdit } from './imageTextEditor'
-import { confirmedLayerSelections, layerSplitNeedsPlan } from './layerSplitBrief'
+import { confirmedLayerSelections, layerSplitAwaitingAdjust, layerSplitNeedsConfirm, layerSplitNeedsPlan } from './layerSplitBrief'
+import { shouldPreferArkImageGeneration } from './modelGeneration'
 import { persistNow, upsertImage } from './session'
 import { acquireGenerationSlot } from './slots'
 
@@ -36,8 +37,8 @@ export async function prepareModelGeneration(tool: string, json: string, session
   const model = findAgentModelTool(tool)
   if (!model)
     throw new Error('Unknown model')
-  if (model.id === 'image-layer-splitter' && layerSplitNeedsPlan(session.messages))
-    throw new Error('Layer targets are missing. Do not invent regions or show a generation confirmation. Call ask_user with layer_selection_method (Draw boxes / Describe the layers / Other) and wait. If Describe the layers was already selected, call ask_user with layer_split_plan containing image-specific extraction proposals and Other, then wait. If Draw boxes was selected, request actual regions. A model mention followed by an upload is not a confirmed splitting plan.')
+  if (model.id === 'image-layer-splitter' && (layerSplitNeedsPlan(session.messages) || layerSplitNeedsConfirm(session.messages) || layerSplitAwaitingAdjust(session.messages)))
+    throw new Error('Layer targets are not confirmed. Call the appropriate layer-selection confirmation card and wait before generating. Never invent regions, skip the boxed preview, or rerun a rejected split.')
   if (model.id === 'image-text-editor') {
     const requestedImage = String(JSON.parse(json).image_url || '')
     const sourceUrl = session.images.find(image => image.id === requestedImage)?.url || requestedImage
@@ -118,6 +119,7 @@ export function modelConfirmation(args: ModelGeneration) {
 }
 export async function runModelGeneration(session: AgentSession, callId: string, args: ModelGeneration, emit: (event: AgentEvent) => void) {
   const model = AGENT_MODELS.find(model => model.id === args.modelId)!
+  const useArkLayer = model.id === 'image-layer-splitter' && shouldPreferArkImageGeneration()
   const mediaUrls = (kind: 'image' | 'video' | 'audio') => Object.entries(args.input)
     .filter(([key]) => (key.includes('url') || model.schema.components.schemas.Input.properties[key]?.['x-ui-component'] === 'uploaders') && (kind === 'image' ? !key.includes('video') && !key.includes('audio') : key.includes(kind)))
     .flatMap(([, value]) => Array.isArray(value) ? value : [value])
@@ -145,13 +147,15 @@ export async function runModelGeneration(session: AgentSession, callId: string, 
   let terminalFailure = false
   try {
     const slot = await acquireGenerationSlot({ sessionId: session.id, callId, projectId: session.projectId, meta: {
+      provider: useArkLayer || isArkGenerateModel(model.id) ? 'ark' : 'fal',
+      model: model.id,
       kind: image.kind,
       prompt: image.prompt,
       inputUrls: mediaUrls('image'),
       referenceVideoUrls: [...mediaUrls('video'), ...mediaUrls('audio')],
       modelId: model.id,
       modelInput: args.input,
-      requestModel: args.requestModel,
+      requestModel: useArkLayer ? ARK_SEEDREAM_LAYER_MODEL : args.requestModel,
     } })
     savedJob = true
     if (slot.queued)
@@ -176,7 +180,22 @@ export async function runModelGeneration(session: AgentSession, callId: string, 
       if (job.state === 'success') {
         const layers = toPublicJob(job).layers
         for (const [i, url] of job.resultUrls.entries()) {
-          const next = { ...image, name: layers?.[i]?.name || image.name, id: i ? `${callId}_${i}` : callId, status: 'success' as const, url }
+          const layer = layers?.[i]
+          const next = {
+            ...image,
+            name: layer?.name || image.name,
+            id: i ? `${callId}_${i}` : callId,
+            status: 'success' as const,
+            url,
+            ...(layer
+              ? {
+                  layerGroupId: job.taskId,
+                  layerId: layer.id,
+                  layerIndex: i,
+                  layer,
+                }
+              : {}),
+          }
           upsertImage(session, next)
           emit({ type: 'image', image: next })
         }

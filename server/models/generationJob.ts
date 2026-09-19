@@ -22,6 +22,12 @@ export interface IGenerationJob {
   taskId: string
   providerTaskId: string
   state: GenerationJobState
+  archiveProgress?: {
+    completed: number
+    total: number
+    failed: number
+    pending: number
+  }
   sourceUrls: string[]
   resultUrls: string[]
   resultAssets: IResultAsset[]

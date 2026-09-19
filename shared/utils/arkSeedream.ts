@@ -4,6 +4,10 @@ import type { ModelOpenAPISchema } from '../types/aiModel'
 // in local service settings so a model revision can be changed without touching projects.
 export const ARK_SEEDREAM_T2I_MODEL = 'ark/seedream/5-pro-text-to-image'
 export const ARK_SEEDREAM_I2I_MODEL = 'ark/seedream/5-pro-image-to-image'
+// Internal provider marker for Seedream 5.0 Pro layer decomposition. This is
+// not exposed as a separate composer model; it keeps the editable layer tool
+// on the same Ark model endpoint with layer_decomposition=true.
+export const ARK_SEEDREAM_LAYER_MODEL = 'ark/seedream/5-pro-layer-decomposition'
 export const ARK_SEEDREAM_MODELS = [ARK_SEEDREAM_T2I_MODEL, ARK_SEEDREAM_I2I_MODEL] as const
 export const DEFAULT_ARK_BASE_URL = 'https://ark.cn-beijing.volces.com/api/v3'
 // Candidate 5.0 Pro model ID. It is intentionally editable in Service connection
@@ -15,8 +19,12 @@ export function isArkGenerateModel(model: string) {
   return (ARK_SEEDREAM_MODELS as readonly string[]).includes(model)
 }
 
+export function isArkLayerModel(model: string) {
+  return model === ARK_SEEDREAM_LAYER_MODEL
+}
+
 export function arkRequestModel(model: string, configuredModel = DEFAULT_ARK_SEEDREAM_MODEL) {
-  if (!isArkGenerateModel(model))
+  if (!isArkGenerateModel(model) && !isArkLayerModel(model))
     return model
   return configuredModel.trim() || DEFAULT_ARK_SEEDREAM_MODEL
 }

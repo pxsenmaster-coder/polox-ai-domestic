@@ -51,6 +51,17 @@ test('upload deletion survives layout reload and rolls back when persistence fai
     await reloaded.ensure(['agent_upload:0'])
     assert.equal(reloaded.positions.value.get('agent_upload:0').hidden, true)
 
+    layout.positions.value = new Map(layout.positions.value).set('agent_upload:0', {
+      ...layout.positions.value.get('agent_upload:0'),
+      layerState: { schemaVersion: 1, layers: [{ id: 'agent_upload:layer:1', hidden: true, dx: 10, dy: -5 }] },
+    })
+    layout.markNode('agent_upload:0')
+    await layout.flush()
+    const layerReloaded = state.useCanvasLayout('project')
+    await layerReloaded.ensure(['agent_upload:0'])
+    assert.equal(layerReloaded.positions.value.get('agent_upload:0').layerState.layers[0].hidden, true)
+    assert.equal(layerReloaded.positions.value.get('agent_upload:0').layerState.layers[0].dx, 10)
+
     layout.positions.value = new Map(layout.positions.value).set('agent_second:0', { x: 320, y: 0, width: 280, height: 310 })
     fail = true
     await assert.rejects(layout.hideNode('agent_second:0'), /Could not delete/)

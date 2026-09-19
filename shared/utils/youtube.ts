@@ -22,5 +22,5 @@ export function youtubeEmbedUrl(videoId: string) {
 }
 
 export function isYoutubeEmbedUrl(src: string) {
-  return /^https:\/\/(www\.)?youtube(-nocookie)?\.com\/embed\/[\w-]{11}(?:\?|$)/i.test(src.trim())
+  return /^https:\/\/(?:www\.)?youtube(?:-nocookie)?\.com\/embed\/[\w-]{11}(?:\?|$)/i.test(src.trim())
 }

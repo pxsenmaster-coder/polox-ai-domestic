@@ -12,6 +12,27 @@ export function isGenerationQueued(state: GenerationJobState) {
   return state === 'queued'
 }
 
+export type ImageLayerBoundingBox = [number, number, number, number]
+export type ImageLayerRenderMode = 'full-canvas' | 'cropped' | 'unplaced'
+
+export interface ImageLayerPublic {
+  id: string
+  url: string
+  name: string
+  description: string
+  zIndex: number
+  role: 'base' | 'foreground'
+  renderMode: ImageLayerRenderMode
+  boundingBox?: ImageLayerBoundingBox
+  imageWidth?: number
+  imageHeight?: number
+}
+
+export interface ImageLayerCanvas {
+  width: number
+  height: number
+}
+
 /** Map provider/DB internals to a short user-safe fail reason. */
 export function publicGenerationFailMessage(error: unknown, fallback = 'Generation failed') {
   const raw = String(error instanceof Error ? error.message : error || '').trim()
@@ -35,7 +56,14 @@ export interface GenerationJobPublic {
   prompt: string
   input: Record<string, unknown>
   state: GenerationJobState
-  layers?: { name: string, description: string, zIndex: number, boundingBox?: unknown }[]
+  archiveProgress?: {
+    completed: number
+    total: number
+    failed: number
+    pending: number
+  }
+  layers?: ImageLayerPublic[]
+  layerCanvas?: ImageLayerCanvas
   resultUrls: string[]
   failCode: string
   failMsg: string

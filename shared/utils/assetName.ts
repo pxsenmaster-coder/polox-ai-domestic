@@ -6,7 +6,7 @@ export function cleanAssetName(value: unknown): string {
 
 export function assetName(item: NamedAsset): string {
   const name = cleanAssetName(item.name)
-  if (name && !/^(shot|image|video|still|cutout|reference)([_ -]\d+)+$/i.test(name))
+  if (name && !/^(?:shot|image|video|still|cutout|reference)(?:[_ -]\d+)+$/i.test(name))
     return name
   const summary = item.prompt?.replace(/\s+/g, ' ').trim()
   if (summary)

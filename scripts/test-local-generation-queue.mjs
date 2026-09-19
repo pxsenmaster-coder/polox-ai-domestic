@@ -2,12 +2,11 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import process from 'node:process'
 import { test } from 'node:test'
 import vm from 'node:vm'
 import ts from 'typescript'
-import { configureDatabase, defineCollection, closeDatabase } from '../server/utils/sqlite.ts'
 import { generationConcurrency } from '../server/utils/generationConcurrency.ts'
+import { closeDatabase, configureDatabase, defineCollection } from '../server/utils/sqlite.ts'
 
 test('concurrent dispatch uses one local queue and one global generation limit', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'polox-local-queue-'))
@@ -15,14 +14,16 @@ test('concurrent dispatch uses one local queue and one global generation limit',
   try {
     const GenerationJob = defineCollection('generation_jobs', () => ({ state: 'queued', deleted: false }), [{ fields: ['taskId'] }])
     for (let i = 0; i < 12; i++)
-      await GenerationJob.create({ taskId: 'agent_' + i, originalRequest: { source: 'agent', holdSlot: true } })
+      await GenerationJob.create({ taskId: `agent_${i}`, originalRequest: { source: 'agent', holdSlot: true } })
     const source = readFileSync(new URL('../server/utils/generationQueue.ts', import.meta.url), 'utf8').replace(/^import .*\n/gm, '')
     const context = vm.createContext({
-      exports: {}, console, GenerationJob, generationConcurrency,
+      exports: {},
+      console,
+      GenerationJob,
+      generationConcurrency,
       GENERATION_ACTIVE_STATES: ['waiting', 'queuing', 'generating'],
       readErrorMessage: error => error.message,
       isProviderStarted: () => false,
-      createFalTask: () => { throw new Error('Test must not call the provider') },
       createFalTask: () => { throw new Error('Test must not call the provider') },
     })
     vm.runInContext(ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText, context)
@@ -33,6 +34,43 @@ test('concurrent dispatch uses one local queue and one global generation limit',
     await context.exports.dispatchQueuedJobs()
     assert.equal(await GenerationJob.countDocuments({ state: 'generating' }), 10)
     assert.equal(await GenerationJob.countDocuments({ state: 'queued' }), 1)
+  }
+  finally {
+    closeDatabase()
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('Ark dispatch keeps a smaller provider burst without changing the Fal/global limit', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'polox-local-queue-ark-'))
+  configureDatabase(join(dir, 'queue.sqlite'))
+  try {
+    const GenerationJob = defineCollection('generation_jobs', () => ({ state: 'queued', deleted: false }), [{ fields: ['taskId'] }])
+    for (let i = 0; i < 5; i++) {
+      await GenerationJob.create({ taskId: `ark_${i}`, provider: 'ark', model: 'ark/seedream/5-pro-text-to-image', input: {}, requestBody: {}, originalRequest: {} })
+    }
+    for (let i = 0; i < 10; i++) {
+      await GenerationJob.create({ taskId: `fal_${i}`, provider: 'fal', model: 'test/fal', input: {}, requestBody: {}, originalRequest: {} })
+    }
+    const source = readFileSync(new URL('../server/utils/generationQueue.ts', import.meta.url), 'utf8').replace(/^import .*\n/gm, '')
+    const context = vm.createContext({
+      exports: {},
+      console,
+      GenerationJob,
+      generationConcurrency,
+      GENERATION_ACTIVE_STATES: ['waiting', 'queuing', 'generating', 'archiving'],
+      readErrorMessage: error => error.message,
+      isImageLayerSplitterModel: () => false,
+      isProviderStarted: () => false,
+      createArkTask: async () => ({ requestId: 'ark-request', urls: ['https://cdn.example.com/ark.png'], payload: {}, requestBody: {}, state: 'complete', diagnostics: {} }),
+      createArkLayerTask: async () => { throw new Error('layer task not expected') },
+      createFalTask: async () => ({ requestId: 'fal-request', statusUrl: 'https://queue.fal.run/test/status', responseUrl: 'https://queue.fal.run/test' }),
+    })
+    vm.runInContext(ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText, context)
+    await context.exports.dispatchQueuedJobs()
+    assert.equal(await GenerationJob.countDocuments({ provider: 'ark', state: 'archiving' }), 3)
+    assert.equal(await GenerationJob.countDocuments({ provider: 'fal', state: 'waiting' }), 7)
+    assert.equal(await GenerationJob.countDocuments({ state: 'queued' }), 5)
   }
   finally {
     closeDatabase()

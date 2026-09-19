@@ -1,4 +1,3 @@
-import { readServiceSettings } from './serviceSettings'
 import type { IGenerationJob } from '../models/generationJob'
 import type { StoredDocument } from './sqlite'
 import { FAL_ENDPOINTS } from '~~/shared/constants/falEndpoints'
@@ -12,6 +11,7 @@ import { isProviderStarted, jobProviderId } from './generationJobs'
 import { mergeSourceUrls } from './generationResults'
 import { toUpstreamApiError } from './httpError'
 import { IMAGE_LAYER_SPLITTER_ENDPOINT, readLayerResult } from './imageLayerSplitter'
+import { readServiceSettings } from './serviceSettings'
 
 export function isFalGenerateModel(model: string) {
   return Boolean(FAL_ENDPOINTS[model]) || Object.values(FAL_ENDPOINTS).includes(model) || isImageLayerSplitterModel(model) || isFlux3GenerateModel(model) || isIdeogramRemoveBackgroundModel(model)

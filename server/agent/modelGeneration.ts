@@ -1,6 +1,6 @@
 import { ARK_SEEDREAM_I2I_MODEL, ARK_SEEDREAM_T2I_MODEL } from '~~/shared/utils/arkSeedream'
 import { GenerationJob } from '../models/generationJob'
-import { createArkTask } from '../utils/arkGenerate'
+import { createArkTask, pollArkTask } from '../utils/arkGenerate'
 import { createFalTask } from '../utils/falGenerate'
 import { falEndpoint } from '../utils/falInput'
 import { sanitizeGenerateInput } from '../utils/generateInput'
@@ -88,7 +88,12 @@ export async function generatePreferredImage(input: { prompt: string, aspect_rat
   const model = arkImageModel(input.input_urls)
   const result = await createArkTask(model, arkImageInput(input))
   await onCreated?.(result.requestId)
-  return { taskId: result.requestId, urls: result.urls }
+  if (result.state !== 'pending' && result.urls.length)
+    return { taskId: result.requestId, urls: result.urls }
+  if (!result.statusUrl)
+    throw new Error('Ark task is pending without a status URL')
+  const completed = await pollArkTask(result.requestId, { statusUrl: result.statusUrl })
+  return { taskId: completed.requestId, urls: completed.urls }
 }
 interface VideoInput { prompt: string, aspect_ratio: string, resolution: string, duration: number, generate_audio: boolean, first_frame_url?: string, last_frame_url?: string, reference_image_urls?: string[], reference_video_urls?: string[] }
 function videoModel(prefix: string, input: VideoInput) {

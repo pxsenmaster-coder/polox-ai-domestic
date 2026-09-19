@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import { getFrontierModelCards } from '@/constants/aiModels'
 import type { FrontierModelCard } from '@/constants/aiModels'
-
-const cards = getFrontierModelCards()
+import { getFrontierModelCards } from '@/constants/aiModels'
 
 const emit = defineEmits<{
   select: [card: FrontierModelCard]
 }>()
+
+const cards = getFrontierModelCards()
 </script>
 
 <template>

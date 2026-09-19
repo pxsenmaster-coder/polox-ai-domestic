@@ -88,7 +88,7 @@ const totalValue = computed(() => props.data.reduce((prev, curr) => {
               else {
                 activeSegmentKey = d?.data?.[index]
                 elements.forEach(el => el.style.opacity = `${filterOpacity}`)
-                elements[i].style.opacity = '1'
+                elements[i]?.style && (elements[i].style.opacity = '1')
               }
             },
           },

@@ -22,8 +22,9 @@ export function isInternalAgentChatText(text: string) {
 export function publicAgentChatText(text: string) {
   let value = String(text || '')
   const attachedAt = value.indexOf(ATTACHED_STILLS_MARKER)
-  if (attachedAt >= 0)
+  if (attachedAt >= 0) {
     value = value.slice(0, attachedAt)
+  }
   else {
     const hintAt = value.indexOf(TOOL_URL_HINT_MARKER)
     if (hintAt >= 0)

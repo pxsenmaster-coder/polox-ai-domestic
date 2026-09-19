@@ -1,5 +1,6 @@
-import type { GenerationJobPublic } from '../../shared/types/generation'
+import type { GenerationJobPublic, ImageLayerCanvas, ImageLayerPublic } from '../../shared/types/generation'
 import type { IGenerationJob, IResultAsset } from '../models/generationJob'
+import { layerRenderMode, normalizeLayerBoundingBox } from '~~/shared/utils/imageLayerComposition'
 import { isImageLayerSplitterModel } from '~~/shared/utils/imageLayerSplitter'
 
 export function parseResultUrls(resultJson?: string) {
@@ -80,27 +81,73 @@ function publicResultUrls(job: IGenerationJob) {
   return (job.sourceUrls || []).filter(url => /^https?:\/\//i.test(url) && !inputs.has(url))
 }
 
-function publicImageLayers(job: IGenerationJob): GenerationJobPublic['layers'] {
-  if (!isImageLayerSplitterModel(job.model) || job.state !== 'success')
-    return undefined
+interface RawLayerResult {
+  image?: { url?: unknown, width?: unknown, height?: unknown }
+  z_index?: unknown
+  name?: unknown
+  description?: unknown
+  bounding_box?: unknown
+}
+
+function readLayerPayload(job: IGenerationJob) {
   try {
-    const result = JSON.parse(job.resultJson)
-    if (!Array.isArray(result.layers))
-      return undefined
-    return result.layers.map((layer: { name?: string, description?: string, z_index: number, bounding_box?: unknown }) => ({
-      name: layer.name || (layer.z_index === 0 ? 'Background' : `Layer ${layer.z_index}`),
-      description: layer.description || '',
-      zIndex: layer.z_index,
-      boundingBox: layer.bounding_box,
-    }))
+    const result = JSON.parse(job.resultJson || '') as Record<string, unknown>
+    return result
   }
   catch {
     return undefined
   }
 }
 
+function publicImageLayerData(job: IGenerationJob): { layers?: ImageLayerPublic[], canvas?: ImageLayerCanvas } {
+  if (!isImageLayerSplitterModel(job.model) || job.state !== 'success')
+    return {}
+  const result = readLayerPayload(job)
+  const rawLayers = Array.isArray(result?.layers) ? result.layers as RawLayerResult[] : []
+  if (!rawLayers.length)
+    return {}
+  const rawWidth = Number(result?.baseWidth)
+  const rawHeight = Number(result?.baseHeight)
+  const canvas = Number.isFinite(rawWidth) && rawWidth > 0 && Number.isFinite(rawHeight) && rawHeight > 0
+    ? { width: rawWidth, height: rawHeight }
+    : undefined
+  const urls = publicResultUrls(job)
+  const layers = rawLayers.map((layer, index): ImageLayerPublic | null => {
+    const image = layer.image || {}
+    const url = String(urls[index] || image.url || '').trim()
+    const zIndex = Number(layer.z_index)
+    if (!/^https?:\/\//i.test(url) || !Number.isInteger(zIndex))
+      return null
+    const imageWidth = Number(image.width)
+    const imageHeight = Number(image.height)
+    const dimensions = {
+      ...(Number.isFinite(imageWidth) && imageWidth > 0 ? { imageWidth } : {}),
+      ...(Number.isFinite(imageHeight) && imageHeight > 0 ? { imageHeight } : {}),
+    }
+    const role = index === 0 ? 'base' as const : 'foreground' as const
+    const boundingBox = normalizeLayerBoundingBox(layer.bounding_box, canvas)
+    const renderMode = layerRenderMode({ role, boundingBox, ...dimensions }, canvas)
+    return {
+      id: `${job.taskId}:layer:${index}`,
+      url,
+      name: String(layer.name || (index === 0 ? 'Background' : `Layer ${zIndex}`)),
+      description: String(layer.description || ''),
+      zIndex,
+      role,
+      renderMode,
+      ...(boundingBox ? { boundingBox } : {}),
+      ...dimensions,
+    }
+  }).filter((layer): layer is ImageLayerPublic => Boolean(layer))
+  return {
+    ...(layers.length ? { layers } : {}),
+    ...(canvas ? { canvas } : {}),
+  }
+}
+
 export function toPublicJob(job: IGenerationJob): GenerationJobPublic {
   const prompt = typeof job.input?.prompt === 'string' ? job.input.prompt : ''
+  const layerData = isImageLayerSplitterModel(job.model) ? publicImageLayerData(job) : {}
   return {
     taskId: job.taskId,
     projectId: job.projectId || '',
@@ -110,8 +157,10 @@ export function toPublicJob(job: IGenerationJob): GenerationJobPublic {
     prompt,
     input: job.input && typeof job.input === 'object' ? job.input : {},
     state: job.state,
+    ...(job.archiveProgress ? { archiveProgress: job.archiveProgress } : {}),
     resultUrls: publicResultUrls(job),
-    ...(isImageLayerSplitterModel(job.model) ? { layers: publicImageLayers(job) } : {}),
+    ...(layerData.layers ? { layers: layerData.layers } : {}),
+    ...(layerData.canvas ? { layerCanvas: layerData.canvas } : {}),
     failCode: job.failCode || '',
     failMsg: job.failMsg || '',
     createdAt: job.createdAt.toISOString(),

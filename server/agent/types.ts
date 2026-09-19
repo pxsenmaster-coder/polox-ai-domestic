@@ -1,4 +1,5 @@
 import type { ImageTextEdit, ImageTextLine } from '~~/shared/utils/imageTextEditor'
+import type { ImageLayerPublic } from '../../shared/types/generation'
 
 export const GPT_IMAGE_2_ASPECT_RATIOS = [
   'auto',
@@ -149,6 +150,10 @@ export interface AgentImage {
   videoMode?: 'text' | 'image' | 'reference' | 'concat'
   videoFamily?: VideoFamily
   providerTaskId?: string
+  layerGroupId?: string
+  layerId?: string
+  layerIndex?: number
+  layer?: ImageLayerPublic
 }
 
 export interface ConfirmationPayload {
@@ -204,14 +209,17 @@ export interface ChoicePayload {
   prompt: string
   recommendation?: string
   questions: ChoiceQuestion[]
+  /** Exact boxed-overlay image URLs attached for the layer confirmation card. */
+  boxedPreviewImages?: { id: string, url: string }[]
 }
 
 export interface ChoiceAnswer {
-  imageSelections?: { imageUrl: string, regions: number[][] }[]
+  imageSelections?: { imageUrl: string, regions: number[][], boxedImageUrl?: string }[]
   textEdits?: ImageTextEdit[]
   textLines?: ImageTextLine[]
   imageUrl?: string
   regions?: number[][]
+  boxedImageUrl?: string
   questionId: string
   optionId?: string
   label?: string

@@ -383,6 +383,18 @@ function onAttachCanvas(payload: {
     name: payload.prompt.trim() || 'Canvas still',
   })))
 }
+async function onRemoveObjectCanvas(payload: {
+  urls: string[]
+  prompt: string
+}) {
+  attachUrls(payload.urls.map(url => ({
+    url,
+    name: payload.prompt.trim() || 'Canvas still',
+  })))
+  draft.value = `/image-object-removal ${payload.prompt.trim() || 'Mark the objects to remove from this image.'}`
+  await nextTick()
+  await sendMessage()
+}
 </script>
 
 <template>
@@ -528,6 +540,7 @@ function onAttachCanvas(payload: {
             @move-many="requestBulk('move', $event)"
             @move="requestMove"
             @attach="onAttachCanvas"
+            @remove-object="onRemoveObjectCanvas"
           />
         </section>
       </template>

@@ -25,6 +25,7 @@ const emit = defineEmits<{
   delete: [id: string]
   move: [id: string]
   attach: [payload: { urls: string[], prompt: string }]
+  removeObject: [payload: { urls: string[], prompt: string }]
 }>()
 interface Asset {
   createdAt?: string
@@ -1300,6 +1301,9 @@ onBeforeUnmount(() => {
           </button>
           <button v-if="showAttach && asset.url && !asset.video && asset.state === 'success' && !asset.layerGroup" class="canvas-action" aria-label="Use as reference" @click="emit('attach', { urls: [asset.url], prompt: asset.prompt })">
             <Icon name="i-lucide-paperclip" />
+          </button>
+          <button v-if="asset.url && !asset.video && asset.state === 'success' && !asset.layerGroup" class="canvas-action" aria-label="Remove objects" title="Remove objects" @click="emit('removeObject', { urls: [asset.url], prompt: asset.prompt })">
+            <Icon name="i-lucide-eraser" />
           </button>
           <button v-if="showMove && asset.taskId" class="canvas-action" aria-label="Move to project" @click="emit('move', asset.taskId)">
             <Icon name="i-lucide-folder" />

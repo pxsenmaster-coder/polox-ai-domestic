@@ -29,6 +29,13 @@ export const PUBLIC_AGENT_SKILLS = [
     keywords: 'image layer splitter transparent png 图层 拆分',
   },
   {
+    id: 'image-object-removal',
+    icon: 'lucide:eraser',
+    name: 'Image Object Removal',
+    description: 'Remove unwanted objects from an image with precise boxes or paint masks.',
+    keywords: 'image object removal erase remove object watermark 修复 擦除 移除',
+  },
+  {
     id: 'long-form-video',
     icon: 'lucide:clapperboard',
     name: 'Long-form video',

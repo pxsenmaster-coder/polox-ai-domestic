@@ -59,6 +59,7 @@ function parseChoiceBody(body: Record<string, unknown>): ChoiceBody {
         return [{
           questionId,
           textEdits: row.textEdits as import('~~/shared/utils/imageTextEditor').ImageTextEdit[] | undefined,
+          objectRemovalEdit: row.objectRemovalEdit as import('~~/shared/utils/imageObjectRemoval').ObjectRemovalEdit | undefined,
           textLines: Array.isArray(row.textLines) ? row.textLines as import('~~/shared/utils/imageTextEditor').ImageTextLine[] : undefined,
           optionId: typeof row.optionId === 'string' ? row.optionId : undefined,
           imageUrl: typeof row.imageUrl === 'string' ? row.imageUrl : undefined,

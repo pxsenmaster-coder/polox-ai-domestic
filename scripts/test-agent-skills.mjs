@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict'
 import { findComposerCommand, readSkillCommands, searchAgentSkills, stripSkillCommands } from '../shared/utils/agentSkills.ts'
 
-assert.deepEqual(searchAgentSkills('').map(s => s.id), ['product-hunt-gallery', 'sketch-to-image', 'image-text-editor', 'image-layer-splitter', 'long-form-video'])
+assert.deepEqual(searchAgentSkills('').map(s => s.id), ['product-hunt-gallery', 'sketch-to-image', 'image-text-editor', 'image-layer-splitter', 'image-object-removal', 'long-form-video'])
 assert.equal(searchAgentSkills('long video')[0].id, 'long-form-video')
 assert.equal(searchAgentSkills('分镜')[0].id, 'long-form-video')
+assert.equal(searchAgentSkills('擦除')[0].id, 'image-object-removal')
 assert.equal(searchAgentSkills('HUNT product')[0].id, 'product-hunt-gallery')
 assert.equal(searchAgentSkills('not-a-skill').length, 0)
 for (const text of ['https://polox.ai', 'Visit https://polox.ai/gallery', '/product-hunt-gallery https://polox.ai', '/product-hunt-gallery '])
@@ -22,3 +23,4 @@ assert.equal(stripSkillCommands('/unknown https://example.com'), '/unknown https
 console.log('Skill selection round-trip and URL preservation passed.')
 
 assert.equal(stripSkillCommands('/product-hunt-gallery /image-text-editor /image-layer-splitter Keep this brief'), 'Keep this brief')
+assert.equal(stripSkillCommands('/image-object-removal remove the watermark'), 'remove the watermark')

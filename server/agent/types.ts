@@ -1,3 +1,4 @@
+import type { ObjectRemovalEdit } from '~~/shared/utils/imageObjectRemoval'
 import type { ImageTextEdit, ImageTextLine } from '~~/shared/utils/imageTextEditor'
 import type { ImageLayerPublic } from '../../shared/types/generation'
 
@@ -214,6 +215,7 @@ export interface ChoicePayload {
 }
 
 export interface ChoiceAnswer {
+  objectRemovalEdit?: ObjectRemovalEdit
   imageSelections?: { imageUrl: string, regions: number[][], boxedImageUrl?: string }[]
   textEdits?: ImageTextEdit[]
   textLines?: ImageTextLine[]

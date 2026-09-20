@@ -2,13 +2,15 @@ import type { ModelGeneration } from './models'
 import type { AgentSession, PendingToolItem } from './session'
 import type { SlotMeta } from './slots'
 import type { AgentConfirmPolicy, AgentEvent, AgentImage, AskUserArgs, ChatMessage, ChoiceAnswer, ChoiceBody, ConfirmationPayload, ConfirmBody, GenerateImageArgs, ResolvedGenerateVideo, ResolvedRemoveBackground, ToolCall, UserContentPart } from './types'
-import { withCustomChoiceOption } from '~~/shared/utils/agentChoices'
+import { standaloneImageEditQuestions, withCustomChoiceOption } from '~~/shared/utils/agentChoices'
 import { validateLayerSelection, validateLayerSelections } from '~~/shared/utils/agentLayerSelection'
 import { AGENT_MODELS, findAgentModelTool, readModelMentions, registeredModelTools } from '~~/shared/utils/agentModels'
+import { validateObjectRemovalEdit } from '~~/shared/utils/imageObjectRemoval'
 import { validateTextEditAnswer, validateTextEditAnswers } from '~~/shared/utils/imageTextEditor'
 import { concatVideoUrls } from './concat'
 import { EXPORT_ZIP_TOOL, exportSessionZip, resolveZipExport } from './exportZip'
 import { removeBackground } from './fal'
+import { renderObjectRemovalOverlay } from './imageObjectRemoval'
 import { confirmedTextEdit, detectImageText, textEditNeedsSummary } from './imageTextEditor'
 import { renderLayerSelectionOverlay } from './layerSelectionOverlay'
 import { confirmedLayerSelections, hasLayerSourceImage, layerSplitAwaitingAdjust, layerSplitNeedsConfirm, layerSplitNeedsPlan, layerSplitNeedsSummary, needsLayerDescriptionCard } from './layerSplitBrief'
@@ -773,6 +775,9 @@ function latestUserImageUrls(messages: ChatMessage[]): string[] {
   return []
 }
 function withTurnImageInputs(args: GenerateImageArgs, messages: ChatMessage[]): GenerateImageArgs {
+  const removal = confirmedRemovalFromMessages(messages)
+  if (removal?.annotatedImageUrl)
+    return { ...args, input_urls: uniqueHttpUrls([removal.imageUrl, removal.annotatedImageUrl, ...args.input_urls]) }
   if (args.input_urls.length)
     return args
   const attached = latestUserImageUrls(messages)
@@ -837,6 +842,22 @@ function confirmationModel(kind: ConfirmationPayload['kind'], imageArgs?: Genera
     modelName: useArk ? 'Seedream 5.0 Pro · 火山方舟' : imageArgs?.input_urls.length ? 'GPT Image 2.5 Sunburst' : 'GPT Image 2',
     task: imageArgs?.input_urls.length ? 'Image to Image' : 'Text to Image',
   }
+}
+function confirmedRemovalFromMessages(messages: ChatMessage[]) {
+  for (const message of [...messages].reverse()) {
+    if (message.role === 'user' && !message.internal)
+      break
+    if (message.role !== 'tool' || typeof message.content !== 'string')
+      continue
+    try {
+      const parsed = JSON.parse(message.content) as { answers?: ChoiceAnswer[] }
+      const edit = parsed.answers?.find(answer => answer.objectRemovalEdit)?.objectRemovalEdit
+      if (edit?.annotatedImageUrl)
+        return edit
+    }
+    catch { /* Ignore unrelated tool results. */ }
+  }
+  return null
 }
 function queueGenerationWork(sessionId: string, items: PendingToolItem[], emit: Emit) {
   const session = requireSession(sessionId)
@@ -969,7 +990,7 @@ function queueAskUser(sessionId: string, items: Array<{
     for (const question of item.args.questions) {
       const id = seen.has(question.id) ? `${question.id}_${questions.length + 1}` : question.id
       seen.add(id)
-      questions.push(id === question.id ? question : { ...question, id })
+      questions.push(id === question.id ? { ...question, recommendedId: ['image_edit_method', 'object_removal_method'].includes(question.id) ? 'annotate' : question.recommendedId } : { ...question, id })
     }
   }
   const intro = items.map(item => item.args.prompt).find(Boolean) || ''
@@ -984,7 +1005,7 @@ function queueAskUser(sessionId: string, items: Array<{
     id: crypto.randomUUID(),
     prompt: intro,
     ...(recommendation ? { recommendation } : {}),
-    questions,
+    questions: standaloneImageEditQuestions(questions),
     ...(boxedPreviewImages.length ? { boxedPreviewImages } : {}),
     ...(first.args.textEdits ? { textEdits: first.args.textEdits } : {}),
     ...(first.args.textEdit ? { textEdit: first.args.textEdit } : {}),
@@ -1639,11 +1660,13 @@ function formatChoiceResult(payload: NonNullable<AgentSession['pendingChoice']>[
       }
     }
     if (option) {
-      const selection = question.id === 'layer_selection_method' && option.id === 'draw_boxes'
-        ? row.imageSelections !== undefined
-          ? { imageSelections: validateLayerSelections(row.imageSelections, sourceUrls) }
-          : validateLayerSelection(row.imageUrl, row.regions, sourceUrls, row.boxedImageUrl)
-        : undefined
+      const selection = question.id === 'object_removal_method' && option.id === 'annotate'
+        ? { objectRemovalEdit: validateObjectRemovalEdit(row.objectRemovalEdit, sourceUrls) }
+        : question.id === 'layer_selection_method' && option.id === 'draw_boxes'
+          ? row.imageSelections !== undefined
+            ? { imageSelections: validateLayerSelections(row.imageSelections, sourceUrls) }
+            : validateLayerSelection(row.imageUrl, row.regions, sourceUrls, row.boxedImageUrl)
+          : undefined
       return {
         questionId: question.id,
         optionId: option.id,
@@ -1772,6 +1795,23 @@ export async function handleChoice(sessionId: string, body: ChoiceBody, emit: Em
       textEdits?: {
         imageUrl: string
       }[]
+    }
+    const removalEdit = confirmed.answers?.find(answer => answer.questionId === 'object_removal_method' && answer.optionId === 'annotate')?.objectRemovalEdit
+    if (removalEdit) {
+      if (!removalEdit.annotatedImageUrl)
+        removalEdit.annotatedImageUrl = await renderObjectRemovalOverlay(removalEdit, session.id, signal)
+      session.messages.push({
+        role: 'user',
+        internal: true,
+        content: [
+          { type: 'text', text: 'Image Object Removal: the user marked objects to remove. Image 1 is the original; image 2 is the annotated overlay. Visually identify each marked object and call ask_user with exactly one question id object_removal_confirm. Put each Box/Mask on its own line, then ask for confirmation. Do not generate yet.' },
+          { type: 'text', text: 'Original image:' },
+          { type: 'image_url', image_url: { url: removalEdit.imageUrl } },
+          { type: 'text', text: 'Annotated overlay:' },
+          { type: 'image_url', image_url: { url: removalEdit.annotatedImageUrl } },
+        ],
+      })
+      touch(session)
     }
     const textEdits = confirmed.textEdits || (confirmed.textEdit ? [confirmed.textEdit] : [])
     const layerMethod = confirmed.answers?.find(answer => answer.questionId === 'layer_selection_method' && answer.optionId === 'draw_boxes')

@@ -2,6 +2,7 @@ import type { AgentConfirmPolicy, AgentQuality } from '~~/shared/types/agentPref
 import type { GenerationJobPublic, ImageLayerPublic } from '~~/shared/types/generation'
 import type { GptImage2AspectRatio, GptImage2Resolution } from '~~/shared/utils/gptImage2'
 import type { ImageTextEdit, ImageTextLine } from '~~/shared/utils/imageTextEditor'
+import type { ObjectRemovalEdit } from '~~/shared/utils/imageObjectRemoval'
 import { publicGenerationFailMessage } from '~~/shared/types/generation'
 import { isInternalAgentChatText, publicAgentChatText } from '~~/shared/utils/agentChatVisibility'
 import { isAgentTransientMessage } from '~~/shared/utils/agentHistoryVisibility'
@@ -105,6 +106,7 @@ export interface ChoicePayload {
   boxedPreviewImages?: { id: string, url: string }[]
 }
 export interface ChoiceAnswer {
+  objectRemovalEdit?: ObjectRemovalEdit
   imageSelections?: {
     imageUrl: string
     regions: number[][]

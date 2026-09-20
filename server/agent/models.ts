@@ -8,6 +8,7 @@ import { falEndpoint } from '../utils/falInput'
 import { sanitizeGenerateInput } from '../utils/generateInput'
 import { refreshGenerationJob } from '../utils/generationPipeline'
 import { toPublicJob } from '../utils/generationResults'
+import { confirmedObjectRemovalEdit } from './imageObjectRemoval'
 import { confirmedTextEdit } from './imageTextEditor'
 import { confirmedLayerSelections, layerSplitAwaitingAdjust, layerSplitNeedsConfirm, layerSplitNeedsPlan } from './layerSplitBrief'
 import { shouldPreferArkImageGeneration } from './modelGeneration'
@@ -87,6 +88,14 @@ export async function prepareModelGeneration(tool: string, json: string, session
       raw.image_url = selection.imageUrl
       raw.regions = selection.regions
     }
+  }
+  const objectRemoval = confirmedObjectRemovalEdit(session)
+  if (objectRemoval && model.task === 'Image to Image') {
+    const imageField = ['images', 'input_urls', 'image_urls', 'image_input'].find(key => key in model.schema.components.schemas.Input.properties)
+    if (!imageField)
+      throw new Error('This model cannot accept the original image and removal overlay.')
+    const urls = Array.isArray(raw[imageField]) ? raw[imageField] : []
+    raw[imageField] = [...new Set([objectRemoval.imageUrl, objectRemoval.annotatedImageUrl, ...urls].filter((value): value is string => typeof value === 'string' && /^https?:\/\//i.test(value)))]
   }
   const validated = validateAgentModelInput(model, raw)
   const input = sanitizeGenerateInput(model.id, validated)

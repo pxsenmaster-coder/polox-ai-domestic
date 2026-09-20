@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import type { ImageLayerRegion } from '~~/shared/utils/imageLayerSplitter'
+import type { ObjectRemovalTarget } from '~~/shared/utils/imageObjectRemoval'
 import type { ChoiceAnswer, ChoicePayload, ChoiceQuestion } from '~/composables/useAgentLab'
-import { withCustomChoiceOption } from '~~/shared/utils/agentChoices'
+import { standaloneImageEditQuestions, withCustomChoiceOption } from '~~/shared/utils/agentChoices'
 
 const props = withDefaults(defineProps<{
   choice: ChoicePayload
@@ -18,7 +19,7 @@ const emit = defineEmits<{
   skip: []
 }>()
 
-const questions = computed(() => props.choice.questions.map(question => ({
+const questions = computed(() => standaloneImageEditQuestions(props.choice.questions).map(question => ({
   ...question,
   options: withCustomChoiceOption(question.options),
 })))
@@ -31,12 +32,18 @@ const regions = computed({
   get: () => regionsByImage.value[sourceUrl.value] || [],
   set: (value: ImageLayerRegion[]) => { regionsByImage.value[sourceUrl.value] = value },
 })
+const removalTargetsByImage = ref<Record<string, ObjectRemovalTarget[]>>({})
+const removalTargets = computed({
+  get: () => removalTargetsByImage.value[sourceUrl.value] || [],
+  set: (value: ObjectRemovalTarget[]) => { removalTargetsByImage.value[sourceUrl.value] = value },
+})
 const imageSelections = computed(() => (props.sourceImages || []).map(image => ({
   imageUrl: image.url,
   regions: (regionsByImage.value[image.url] || []).map(box => [...box] as ImageLayerRegion),
 })))
 const selecting = ref(false)
 const drawing = computed(() => selections.value.layer_selection_method?.optionId === 'draw_boxes')
+const removing = computed(() => selections.value.object_removal_method?.optionId === 'annotate')
 const confirmingLayers = computed(() => questions.value.some(question => question.id === 'layer_split_confirm'))
 const boxedPreviewImages = computed(() => props.choice.boxedPreviewImages || [])
 watch(() => props.sourceImages, (images) => {
@@ -50,6 +57,7 @@ watch(
   () => {
     selections.value = {}
     regionsByImage.value = {}
+    removalTargetsByImage.value = {}
     for (const answer of props.answers || []) {
       if (answer.optionId)
         selections.value[answer.questionId] = { optionId: answer.optionId, text: answer.text || '' }
@@ -58,6 +66,13 @@ watch(
           if (props.sourceImages?.some(image => image.url === selection.imageUrl))
             regionsByImage.value[selection.imageUrl] = selection.regions.map(box => [...box] as ImageLayerRegion)
         }
+      }
+      if (answer.objectRemovalEdit) {
+        sourceUrl.value = answer.objectRemovalEdit.imageUrl
+        removalTargetsByImage.value[answer.objectRemovalEdit.imageUrl] = answer.objectRemovalEdit.targets.map(target => ({
+          ...target,
+          strokes: target.strokes?.map(stroke => ({ ...stroke, points: stroke.points.map(point => [...point] as [number, number]) })),
+        }))
       }
     }
   },
@@ -105,6 +120,8 @@ const canSubmit = computed(() => {
     return false
   if (drawing.value && (!imageSelections.value.length || imageSelections.value.some(selection => !selection.regions.length) || selecting.value))
     return false
+  if (removing.value && (!sourceUrl.value || !removalTargets.value.length || selecting.value))
+    return false
   return questions.value.every((question) => {
     const option = selectedOption(question)
     if (!option)
@@ -128,6 +145,9 @@ function emitSubmit() {
       text: current?.text.trim() || undefined,
       ...(question.id === 'layer_selection_method' && current?.optionId === 'draw_boxes'
         ? { imageSelections: imageSelections.value }
+        : {}),
+      ...(question.id === 'object_removal_method' && current?.optionId === 'annotate'
+        ? { objectRemovalEdit: { imageUrl: sourceUrl.value, targets: removalTargets.value.map(target => ({ ...target, strokes: target.strokes?.map(stroke => ({ ...stroke, points: stroke.points.map(point => [...point] as [number, number]) })) })) } }
         : {}),
     }
   }))
@@ -277,6 +297,21 @@ const resolvedAnswers = computed(() => {
             @keydown.enter.prevent="emitSubmit()"
           />
         </fieldset>
+        <section v-if="removing" class="flex min-w-0 flex-col gap-3" aria-label="Mark objects to remove">
+          <p class="text-sm text-muted-foreground">
+            Draw boxes or paint masks over the objects to remove, then confirm.
+          </p>
+          <div v-if="(sourceImages?.length || 0) > 1" class="flex flex-wrap gap-2" aria-label="Source image">
+            <button v-for="image in sourceImages" :key="image.id" type="button" class="rounded-lg border p-1" :class="sourceUrl === image.url ? 'border-primary' : 'border-border'" :aria-pressed="sourceUrl === image.url" :disabled="pending || selecting" @click="sourceUrl = image.url">
+              <img :src="image.url" alt="Select source image" class="size-16 object-contain">
+              <span class="block text-xs">{{ removalTargetsByImage[image.url]?.length || 0 }} objects</span>
+            </button>
+          </div>
+          <ToolsImageObjectRemovalEditor v-if="sourceUrl" :key="sourceUrl" v-model="removalTargets" :src="sourceUrl" :disabled="pending" @selecting="selecting = $event" />
+          <p v-else role="status" class="text-sm text-muted-foreground">
+            No source image is available. Upload an image in the chat first.
+          </p>
+        </section>
         <section v-if="drawing" class="flex min-w-0 flex-col gap-3" aria-label="Select image layers">
           <p class="text-sm text-muted-foreground">
             Draw boxes on each image, then confirm all images together. Your boxes are saved when switching images.
@@ -335,7 +370,7 @@ const resolvedAnswers = computed(() => {
         @click="emitSubmit"
       >
         <Spinner v-if="pending" />
-        {{ drawing ? `Confirm ${imageSelections.length} image${imageSelections.length === 1 ? '' : 's'}` : 'Continue' }}
+        {{ removing ? 'Confirm objects' : drawing ? `Confirm ${imageSelections.length} image${imageSelections.length === 1 ? '' : 's'}` : 'Continue' }}
       </Button>
     </CardFooter>
   </Card>

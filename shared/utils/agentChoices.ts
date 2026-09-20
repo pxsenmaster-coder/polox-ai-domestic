@@ -20,3 +20,11 @@ export function withCustomChoiceOption<T extends CustomChoiceOption>(options: T[
     custom: true,
   }]
 }
+
+const STANDALONE_METHOD_IDS = new Set(['image_edit_method', 'object_removal_method'])
+
+/** Keep image-edit and object-removal method cards focused on one checkpoint. */
+export function standaloneImageEditQuestions<T extends { id: string, recommendedId?: string }>(questions: T[]): T[] {
+  const method = questions.find(question => STANDALONE_METHOD_IDS.has(question.id))
+  return method ? [{ ...method, recommendedId: 'annotate' }] : questions
+}

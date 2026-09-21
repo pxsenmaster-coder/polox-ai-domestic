@@ -29,5 +29,5 @@ export default defineEventHandler(async (event) => {
   const row = await getUserSkillRecord(id)
   if (!row)
     throw createError({ statusCode: 404, statusMessage: 'User skill not found' })
-  return { source: 'user', ...toPublicUserSkill(row, true), markdown: readUserSkillMarkdown(id) }
+  return { ...toPublicUserSkill(row, true), markdown: readUserSkillMarkdown(id) }
 })

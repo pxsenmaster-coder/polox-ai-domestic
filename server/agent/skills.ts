@@ -175,7 +175,7 @@ export function parseSkillMarkdown(raw: string, fallbackId: string, source: Skil
     safety: {
       maxGenerationsPerRun: Number(safetyRaw.maxGenerationsPerRun ?? data.maxGenerationsPerRun ?? 3) || 3,
       allowSpend: safetyRaw.allowSpend === undefined && data.allowSpend === undefined
-        ? true
+        ? source === 'builtin'
         : Boolean(safetyRaw.allowSpend ?? data.allowSpend),
     },
   }

@@ -7,7 +7,8 @@ import { validateLayerSelection, validateLayerSelections } from '~~/shared/utils
 import { AGENT_MODELS, findAgentModelTool, readModelMentions, registeredModelTools } from '~~/shared/utils/agentModels'
 import { validateObjectRemovalEdit } from '~~/shared/utils/imageObjectRemoval'
 import { validateTextEditAnswer, validateTextEditAnswers } from '~~/shared/utils/imageTextEditor'
-import { getUserSkillRecord, listEnabledUserCatalog } from '../utils/userSkills'
+import { countGenerationCallsSinceLastUser, mergeUserSkillRuntimePolicies } from '../utils/userSkillRuntime'
+import { getUserSkillRecord, listEnabledUserCatalog, listLoadableUserSkillRecords } from '../utils/userSkills'
 import { concatVideoUrls } from './concat'
 import { EXPORT_ZIP_TOOL, exportSessionZip, resolveZipExport } from './exportZip'
 import { removeBackground } from './fal'
@@ -23,7 +24,7 @@ import { MAX_STEPS } from './policy'
 import { applyImageQuality, applyVideoQuality, clampVideoToFamily, parseAgentConfirmPolicy, parseAgentQuality, parseVideoFamily } from './quality'
 import { restoreSessionContext } from './restore'
 import { scheduleSessionResume } from './resume'
-import { choiceAlreadyAnswered, confirmationAlreadyStarted, persistNow, refreshSessionPrompt, requireLoadedSession, requireSession, resolveChatSession, touch, upsertImage } from './session'
+import { choiceAlreadyAnswered, confirmationAlreadyStarted, persistNow, reconcileLoadedSkills, refreshSessionPrompt, requireLoadedSession, requireSession, resolveChatSession, touch, upsertImage } from './session'
 import { isBuiltinSkillId, loadSkillDocument } from './skills'
 import { acquireGenerationSlot, bindGenerationSlot, completeGenerationSlot, waitForGenerationSlot } from './slots'
 import { summarizeSessionTitle } from './title'
@@ -226,6 +227,19 @@ function rememberProviderTask(sessionId: string, image: AgentImage, bindProvider
     await bindProvider(providerTaskId)
   }
 }
+
+function isGenerationToolName(name: string) {
+  return name === GENERATE_IMAGE_TOOL
+    || name === REMOVE_BACKGROUND_TOOL
+    || name === GENERATE_VIDEO_TOOL
+    || Boolean(findAgentModelTool(name))
+}
+
+async function resolveSkillGenerationPolicy(session: AgentSession) {
+  const rows = await listLoadableUserSkillRecords(session.loadedSkillIds || [])
+  return mergeUserSkillRuntimePolicies(rows)
+}
+
 function isAbortMessage(message: string) {
   return /aborted/i.test(message)
 }
@@ -1127,7 +1141,7 @@ async function dispatchToolCalls(sessionId: string, toolCalls: ToolCall[], emit:
     kind: 'ask'
   }> => item.kind === 'ask')
   const skillLoads = prepared.filter((item): item is Extract<Prepared, { kind: 'load_skill' }> => item.kind === 'load_skill')
-  const generation = prepared.filter((item): item is Exclude<Prepared, {
+  let generation = prepared.filter((item): item is Exclude<Prepared, {
     kind: 'error' | 'concat' | 'ask' | 'zip' | 'load_skill'
   }> => item.kind === 'image' || item.kind === 'remove' || item.kind === 'video' || item.kind === 'model')
   if (asks.length) {
@@ -1194,6 +1208,31 @@ async function dispatchToolCalls(sessionId: string, toolCalls: ToolCall[], emit:
       emit({ type: 'tool', name: LOAD_SKILL_TOOL, status: 'end', callId: item.call.id })
     }
   }
+  const generationWasRequested = generation.length > 0
+  const skillGenerationPolicy = await resolveSkillGenerationPolicy(session)
+  if (skillGenerationPolicy && generation.length) {
+    const generationCount = countGenerationCallsSinceLastUser(session.messages, isGenerationToolName)
+    const blocked = new Set<string>()
+    for (const [index, item] of generation.entries()) {
+      if (!skillGenerationPolicy.allowSpend) {
+        blocked.add(item.call.id)
+        appendToolResult(sessionId, item.call.id, JSON.stringify({
+          ok: false,
+          error: 'The loaded skill does not allow paid generation. Edit its safety.allowSpend setting before generating media.',
+        }))
+        continue
+      }
+      if (generationCount + index >= skillGenerationPolicy.maxGenerationsPerRun) {
+        blocked.add(item.call.id)
+        appendToolResult(sessionId, item.call.id, JSON.stringify({
+          ok: false,
+          error: `The loaded skill allows at most ${skillGenerationPolicy.maxGenerationsPerRun} generations per user turn.`,
+        }))
+      }
+    }
+    if (blocked.size)
+      generation = generation.filter(item => !blocked.has(item.call.id))
+  }
   for (const item of exports) {
     if (sessionWantsStop(session) || signal?.aborted) {
       appendToolResult(sessionId, item.call.id, JSON.stringify({ ok: false, cancelled: true, error: 'Stopped by user' }))
@@ -1211,7 +1250,7 @@ async function dispatchToolCalls(sessionId: string, toolCalls: ToolCall[], emit:
       emit({ type: 'tool', name: EXPORT_ZIP_TOOL, status: 'end', callId: item.call.id })
     }
   }
-  if (concats.length && generation.length) {
+  if (concats.length && generationWasRequested) {
     for (const item of concats) {
       appendToolResult(sessionId, item.call.id, JSON.stringify({
         ok: false,
@@ -1240,7 +1279,7 @@ async function dispatchToolCalls(sessionId: string, toolCalls: ToolCall[], emit:
     }
     return false
   }
-  if (concats.length && !generation.length) {
+  if (concats.length && !generation.length && !generationWasRequested) {
     await runConcats(sessionId, concats.map(item => ({
       toolCallId: item.call.id,
       urls: item.urls,
@@ -1276,6 +1315,7 @@ async function dispatchToolCalls(sessionId: string, toolCalls: ToolCall[], emit:
 }
 export async function runAgentLoop(sessionId: string, emit: Emit, signal?: AbortSignal) {
   const session = requireSession(sessionId)
+  await reconcileLoadedSkills(session)
   session.llmAbort = new AbortController()
   const onOuterAbort = () => session.llmAbort?.abort()
   if (signal?.aborted) {

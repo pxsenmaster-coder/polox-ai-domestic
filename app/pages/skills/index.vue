@@ -301,9 +301,7 @@ async function toggleSkill(skill: SkillCard) {
       method: 'PATCH',
       body: { enabled: !skill.enabled },
     })
-    if (data.value) {
-      data.value.userSkills = data.value.userSkills.map(item => item.id === skill.id ? { ...item, enabled: !skill.enabled } : item)
-    }
+    await loadSkills()
     toast.success(skill.enabled ? 'Skill disabled' : 'Skill enabled')
   }
   catch (error) {

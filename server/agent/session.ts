@@ -8,10 +8,13 @@ import { isInternalAgentChatText, publicAgentChatText } from '~~/shared/utils/ag
 import { allocateAssetName } from '~~/shared/utils/assetName'
 import { archiveAgentHistory } from '../utils/agentHistory'
 import { stripLegacyAccounting, stripLegacyScope } from '../utils/sqlite'
+import { filterLoadedSkillIds } from '../utils/userSkillRuntime'
+import { listLoadableUserSkillRecords } from '../utils/userSkills'
 import { MAX_TRANSCRIPT_MESSAGES, SESSION_MEMORY_IDLE_MS } from './policy'
 import { sessionMediaPrompt, SYSTEM_PROMPT } from './prompt'
 import { parseAgentQuality } from './quality'
 import { fetchStoredSession, fetchStoredSessionList, putStoredSession } from './sessionStore'
+import { isBuiltinSkillId } from './skills'
 
 export interface PendingToolItem {
   toolCallId: string
@@ -270,6 +273,7 @@ export async function loadSession(id: string, bffUrl?: string) {
   if (local && !isThinSession(local)) {
     if (bffUrl)
       local.bffUrl = bffUrl
+    await reconcileLoadedSkills(local)
     return local
   }
   const remote = await fetchStoredSession(id, bffUrl || local?.bffUrl)
@@ -277,6 +281,7 @@ export async function loadSession(id: string, bffUrl?: string) {
     const session = sessionFromStorage(remote)
     session.busy = Boolean(local?.busy)
     session.bffUrl = bffUrl || local?.bffUrl
+    await reconcileLoadedSkills(session)
     sessions.set(session.id, session)
     persistDisk(session)
     return session
@@ -284,6 +289,7 @@ export async function loadSession(id: string, bffUrl?: string) {
   if (local) {
     if (bffUrl)
       local.bffUrl = bffUrl
+    await reconcileLoadedSkills(local)
     return local
   }
   return undefined
@@ -428,6 +434,38 @@ export function refreshSessionPrompt(session: AgentSession) {
     session.messages[0] = { role: 'system', content }
   else
     session.messages.unshift({ role: 'system', content })
+}
+
+export async function reconcileLoadedSkills(session: AgentSession) {
+  const ids = [...new Set(session.loadedSkillIds || [])]
+  if (!ids.length)
+    return false
+  const loadableRows = await listLoadableUserSkillRecords(ids)
+  const loadableUserIds = new Set(loadableRows.map(row => row.skillId))
+  const builtinIds = new Set(ids.filter(id => isBuiltinSkillId(id)))
+  const next = filterLoadedSkillIds(ids, builtinIds, loadableUserIds)
+  if (next.length === ids.length && next.every((id, index) => id === ids[index]))
+    return false
+  session.loadedSkillIds = next
+  refreshSessionPrompt(session)
+  touch(session)
+  return true
+}
+
+export function invalidateLoadedSkill(skillId: string) {
+  const id = String(skillId || '').trim()
+  if (!id)
+    return false
+  let changed = false
+  for (const session of sessions.values()) {
+    if (!session.loadedSkillIds?.includes(id))
+      continue
+    session.loadedSkillIds = session.loadedSkillIds.filter(item => item !== id)
+    refreshSessionPrompt(session)
+    touch(session)
+    changed = true
+  }
+  return changed
 }
 export function upsertImage(session: AgentSession, image: AgentImage) {
   image.name = allocateAssetName(image, session.images)

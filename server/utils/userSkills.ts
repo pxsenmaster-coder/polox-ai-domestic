@@ -46,6 +46,14 @@ export async function listEnabledUserCatalog() {
     }))
 }
 
+export async function listLoadableUserSkillRecords(skillIds: readonly string[]) {
+  const wanted = new Set(skillIds)
+  if (!wanted.size)
+    return []
+  const rows = await listUserSkillRecords()
+  return rows.filter(row => wanted.has(row.skillId) && row.enabled && row.status !== 'draft')
+}
+
 export async function getUserSkillRecord(skillId: string) {
   ensureUserSkillsReady()
   return UserSkill.findOne({ skillId })
@@ -84,7 +92,10 @@ export async function persistUserSkill(input: PersistUserSkillInput) {
 
   const existing = await UserSkill.findOne({ skillId })
   const enabled = input.enabled ?? existing?.enabled ?? (input.source !== 'imported')
-  const status = input.status ?? existing?.status ?? (enabled ? 'published' : 'draft')
+  const status = input.status
+    ?? (existing
+      ? (enabled && existing.status === 'draft' ? 'published' : existing.status)
+      : (enabled ? 'published' : 'draft'))
   const visibility = input.visibility ?? existing?.visibility ?? 'private'
   const projectId = input.projectId ?? existing?.projectId ?? ''
   const markdown = input.markdown.trim()
@@ -126,6 +137,8 @@ export async function setUserSkillEnabled(skillId: string, enabled: boolean) {
   if (!row)
     return null
   row.enabled = enabled
+  if (enabled && row.status === 'draft')
+    row.status = 'published'
   row.updatedAt = new Date()
   await row.save()
   return row

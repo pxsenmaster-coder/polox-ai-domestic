@@ -55,6 +55,7 @@ const parsed = parseSkillMarkdown(valid, 'draft-skill', 'user')
 assert.equal(parsed.frontmatter.id, 'album-layout')
 assert.equal(JSON.stringify(parsed.frontmatter.requires), JSON.stringify(['ask_user', 'generate_image']))
 assert.equal(parsed.frontmatter.safety.maxGenerationsPerRun, 4)
+assert.equal(parsed.frontmatter.safety.allowSpend, false)
 const result = validateUserSkillMarkdown(valid)
 assert.equal(result.ok, true)
 

@@ -37,6 +37,6 @@ export const UserSkill = defineCollection<IUserSkill>('user_skills', () => ({
   triggers: [],
   requires: [],
   maxGenerationsPerRun: 3,
-  allowSpend: true,
+  allowSpend: false,
   projectId: '',
 }), [{ fields: ['skillId'] }])

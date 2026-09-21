@@ -1,4 +1,5 @@
 import { createError } from 'h3'
+import { invalidateLoadedSkill } from '../../agent/session'
 import { isBuiltinSkillId } from '../../agent/skills'
 import { ensureUserSkillsReady, persistUserSkill, setUserSkillEnabled, toPublicUserSkill } from '../../utils/userSkills'
 
@@ -20,6 +21,8 @@ export default defineEventHandler(async (event) => {
     const row = await setUserSkillEnabled(id, body.enabled)
     if (!row)
       throw createError({ statusCode: 404, statusMessage: 'User skill not found' })
+    if (!body.enabled)
+      invalidateLoadedSkill(id)
     return { ok: true, skill: toPublicUserSkill(row) }
   }
   if (!body?.markdown?.trim())
@@ -29,5 +32,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Skill validation failed', data: { issues: result.issues } })
   if (result.skill.skillId !== id)
     throw createError({ statusCode: 400, statusMessage: 'Skill id in markdown must match URL id' })
+  if (body.enabled === false)
+    invalidateLoadedSkill(id)
   return { ok: true, skill: toPublicUserSkill(result.skill, true) }
 })

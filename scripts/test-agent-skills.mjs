@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { findComposerCommand, readSkillCommands, searchAgentSkills, stripSkillCommands } from '../shared/utils/agentSkills.ts'
+import { findComposerCommand, mergeAgentSkillCatalog, readSkillCommands, searchAgentSkills, stripSkillCommands } from '../shared/utils/agentSkills.ts'
 
 assert.deepEqual(searchAgentSkills('').map(s => s.id), ['product-hunt-gallery', 'sketch-to-image', 'image-text-editor', 'image-layer-splitter', 'image-object-removal', 'long-form-video'])
 assert.equal(searchAgentSkills('long video')[0].id, 'long-form-video')
@@ -24,3 +24,22 @@ console.log('Skill selection round-trip and URL preservation passed.')
 
 assert.equal(stripSkillCommands('/product-hunt-gallery /image-text-editor /image-layer-splitter Keep this brief'), 'Keep this brief')
 assert.equal(stripSkillCommands('/image-object-removal remove the watermark'), 'remove the watermark')
+
+const userCatalog = mergeAgentSkillCatalog([{
+  id: 'album-layout',
+  name: 'Album layout',
+  description: 'Build an editable album page.',
+  source: 'user',
+  enabled: true,
+}, {
+  id: 'image-layer-splitter',
+  name: 'Shadow builtin',
+  description: 'Must not replace the builtin.',
+  source: 'user',
+  enabled: true,
+}])
+assert.equal(userCatalog.filter(skill => skill.id === 'album-layout').length, 1)
+assert.equal(userCatalog.filter(skill => skill.id === 'image-layer-splitter').length, 1)
+assert.equal(readSkillCommands('/album-layout compose a page', userCatalog)[0].id, 'album-layout')
+assert.equal(stripSkillCommands('/album-layout compose a page', userCatalog), 'compose a page')
+console.log('User skill catalog merge and builtin shadow protection passed.')

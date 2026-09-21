@@ -44,25 +44,56 @@ export const PUBLIC_AGENT_SKILLS = [
   },
 ] as const
 
-export function searchAgentSkills(query: string) {
-  const terms = query.toLowerCase().trim().split(/\s+/).filter(Boolean)
-  return PUBLIC_AGENT_SKILLS.filter(skill => terms.every(term => `${skill.id} ${skill.name} ${skill.description} ${skill.keywords}`.toLowerCase().includes(term)))
+export const BUILTIN_PUBLIC_AGENT_SKILLS = PUBLIC_AGENT_SKILLS
+
+export interface CatalogAgentSkill {
+  id: string
+  name: string
+  description: string
+  keywords?: string
+  icon?: string
+  cover?: string
+  coverAlt?: string
+  placeholder?: string
+  source?: 'builtin' | 'user' | 'imported'
+  enabled?: boolean
 }
 
-export function findComposerCommand(text: string, caret: number) {
+/** Merge user-created skills without allowing them to shadow built-in IDs. */
+export function mergeAgentSkillCatalog(userSkills: CatalogAgentSkill[] = []): CatalogAgentSkill[] {
+  const builtin = PUBLIC_AGENT_SKILLS.map(skill => ({ ...skill, source: 'builtin' as const, enabled: true }))
+  const builtinIds = new Set<string>(builtin.map(skill => skill.id))
+  return [...builtin, ...userSkills.filter(skill => skill.enabled !== false && !builtinIds.has(skill.id))]
+}
+
+export function searchAgentSkills(query: string, skills: readonly CatalogAgentSkill[] = PUBLIC_AGENT_SKILLS) {
+  const terms = query.toLowerCase().trim().split(/\s+/).filter(Boolean)
+  return skills.filter(skill => terms.every(term => `${skill.id} ${skill.name} ${skill.description} ${skill.keywords || ''}`.toLowerCase().includes(term)))
+}
+
+export function findComposerCommand(text: string, caret: number, skills: readonly CatalogAgentSkill[] = PUBLIC_AGENT_SKILLS) {
   const before = text.slice(0, caret)
   const match = /(?:^|\s)([@/])([^@/\n]*)$/.exec(before)
-  if (match?.[1] === '/' && PUBLIC_AGENT_SKILLS.some(skill => match[2]?.startsWith(`${skill.id} `)))
+  if (match?.[1] === '/' && skills.some(skill => match[2]?.startsWith(`${skill.id} `)))
     return null
   return match ? { start: caret - match[2]!.length - 1, end: caret, query: match[2]!, trigger: match[1] as '@' | '/' } : null
 }
 
-export function readSkillCommands(text: string) {
-  const ids = new Set([...text.matchAll(/(?:^|\s)\/([a-z0-9-]+)(?=\s|$)/g)].map(match => match[1]))
-  return PUBLIC_AGENT_SKILLS.filter(skill => ids.has(skill.id))
+export function readSkillCommands(text: string, skills: readonly CatalogAgentSkill[] = PUBLIC_AGENT_SKILLS) {
+  const ids = new Set([...text.matchAll(/(?:^|\s)\/([a-z][a-z0-9-]{1,63})(?=\s|$)/g)].map(match => match[1]))
+  return skills.filter(skill => ids.has(skill.id))
 }
 
-export function stripSkillCommands(text: string) {
+export function stripSkillCommands(text: string, skills: readonly CatalogAgentSkill[] = PUBLIC_AGENT_SKILLS) {
+  const ids = new Set(skills.map(skill => skill.id))
   return text.replace(/(?<!\S)\/([a-z0-9-]+)(?=\s|$)[ \t]*/g, (match, id) =>
-    PUBLIC_AGENT_SKILLS.some(skill => skill.id === id) ? '' : match)
+    ids.has(id) ? '' : match)
+}
+
+export function composerPlaceholderForSkills(skills: readonly { id: string, placeholder?: string }[]) {
+  for (const skill of skills) {
+    if (skill.placeholder)
+      return skill.placeholder
+  }
+  return skills.length ? 'What do you want to create next?' : ''
 }

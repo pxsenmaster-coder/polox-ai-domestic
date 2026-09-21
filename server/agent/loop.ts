@@ -7,6 +7,7 @@ import { validateLayerSelection, validateLayerSelections } from '~~/shared/utils
 import { AGENT_MODELS, findAgentModelTool, readModelMentions, registeredModelTools } from '~~/shared/utils/agentModels'
 import { validateObjectRemovalEdit } from '~~/shared/utils/imageObjectRemoval'
 import { validateTextEditAnswer, validateTextEditAnswers } from '~~/shared/utils/imageTextEditor'
+import { getUserSkillRecord, listEnabledUserCatalog } from '../utils/userSkills'
 import { concatVideoUrls } from './concat'
 import { EXPORT_ZIP_TOOL, exportSessionZip, resolveZipExport } from './exportZip'
 import { removeBackground } from './fal'
@@ -23,9 +24,10 @@ import { applyImageQuality, applyVideoQuality, clampVideoToFamily, parseAgentCon
 import { restoreSessionContext } from './restore'
 import { scheduleSessionResume } from './resume'
 import { choiceAlreadyAnswered, confirmationAlreadyStarted, persistNow, refreshSessionPrompt, requireLoadedSession, requireSession, resolveChatSession, touch, upsertImage } from './session'
+import { isBuiltinSkillId, loadSkillDocument } from './skills'
 import { acquireGenerationSlot, bindGenerationSlot, completeGenerationSlot, waitForGenerationSlot } from './slots'
 import { summarizeSessionTitle } from './title'
-import { ASK_USER_TOOL, CONCAT_VIDEO_TOOL, GENERATE_IMAGE_TOOL, GENERATE_VIDEO_TOOL, openAiTools, parseAskUserArgs, parseConcatVideoArgs, parseGenerateImageArgs, parseGenerateVideoArgs, parseRemoveBackgroundArgs, REMOVE_BACKGROUND_TOOL, resolveConcatVideoUrls, resolveGenerateImageArgs, resolveGenerateVideoArgs, resolveRemoveBackgroundSource } from './tools'
+import { ASK_USER_TOOL, CONCAT_VIDEO_TOOL, GENERATE_IMAGE_TOOL, GENERATE_VIDEO_TOOL, LOAD_SKILL_TOOL, openAiTools, parseAskUserArgs, parseConcatVideoArgs, parseGenerateImageArgs, parseGenerateVideoArgs, parseLoadSkillArgs, parseRemoveBackgroundArgs, REMOVE_BACKGROUND_TOOL, resolveConcatVideoUrls, resolveGenerateImageArgs, resolveGenerateVideoArgs, resolveRemoveBackgroundSource } from './tools'
 import { uploadAgentImage } from './upload'
 
 type Emit = (event: AgentEvent) => void
@@ -1052,6 +1054,10 @@ async function dispatchToolCalls(sessionId: string, toolCalls: ToolCall[], emit:
     args: AskUserArgs
   } | {
     call: ToolCall
+    kind: 'load_skill'
+    id: string
+  } | {
+    call: ToolCall
     kind: 'error'
     result: string
   }
@@ -1079,6 +1085,17 @@ async function dispatchToolCalls(sessionId: string, toolCalls: ToolCall[], emit:
       }
       if (call.function.name === EXPORT_ZIP_TOOL)
         return { call, kind: 'zip', input: resolveZipExport(call.function.arguments, session.images) }
+      if (call.function.name === LOAD_SKILL_TOOL) {
+        const parsed = parseLoadSkillArgs(call.function.arguments)
+        if (!isBuiltinSkillId(parsed.id)) {
+          const row = await getUserSkillRecord(parsed.id)
+          if (!row || !row.enabled || row.status === 'draft')
+            throw new Error(`Skill "${parsed.id}" is not enabled or does not exist.`)
+        }
+        if (!loadSkillDocument(parsed.id, true))
+          throw new Error(`Unknown skill: ${parsed.id}`)
+        return { call, kind: 'load_skill', id: parsed.id }
+      }
       if (call.function.name === CONCAT_VIDEO_TOOL) {
         const args = parseConcatVideoArgs(call.function.arguments)
         return { call, kind: 'concat', urls: resolveConcatVideoUrls(args, session.images) }
@@ -1109,8 +1126,9 @@ async function dispatchToolCalls(sessionId: string, toolCalls: ToolCall[], emit:
   const asks = prepared.filter((item): item is Extract<Prepared, {
     kind: 'ask'
   }> => item.kind === 'ask')
+  const skillLoads = prepared.filter((item): item is Extract<Prepared, { kind: 'load_skill' }> => item.kind === 'load_skill')
   const generation = prepared.filter((item): item is Exclude<Prepared, {
-    kind: 'error' | 'concat' | 'ask' | 'zip'
+    kind: 'error' | 'concat' | 'ask' | 'zip' | 'load_skill'
   }> => item.kind === 'image' || item.kind === 'remove' || item.kind === 'video' || item.kind === 'model')
   if (asks.length) {
     const blocked = [
@@ -1122,6 +1140,12 @@ async function dispatchToolCalls(sessionId: string, toolCalls: ToolCall[], emit:
       appendToolResult(sessionId, id, JSON.stringify({
         ok: false,
         error: 'ask_user must run alone. Wait for the user, then continue.',
+      }))
+    }
+    for (const item of skillLoads) {
+      appendToolResult(sessionId, item.call.id, JSON.stringify({
+        ok: false,
+        error: 'load_skill must run alone before asking a question or generating media. Try the skill command again.',
       }))
     }
     if (sessionWantsStop(session)) {
@@ -1143,6 +1167,32 @@ async function dispatchToolCalls(sessionId: string, toolCalls: ToolCall[], emit:
       args: item.args,
     })), emit)
     return true
+  }
+  for (const item of skillLoads) {
+    emit({ type: 'tool', name: LOAD_SKILL_TOOL, status: 'start', callId: item.call.id })
+    try {
+      const document = loadSkillDocument(item.id, true)
+      if (!document)
+        throw new Error(`Unknown skill: ${item.id}`)
+      session.loadedSkillIds = [...new Set([...(session.loadedSkillIds || []), document.id])].slice(-16)
+      refreshSessionPrompt(session)
+      appendToolResult(sessionId, item.call.id, JSON.stringify({
+        ok: true,
+        id: document.id,
+        name: document.frontmatter.name,
+        description: document.frontmatter.description,
+        triggers: document.frontmatter.triggers,
+        requires: document.frontmatter.requires,
+        body: document.body,
+        notice: 'Skill body loaded into this session. Follow it; generation tools still require confirmation.',
+      }))
+    }
+    catch (error) {
+      appendToolResult(sessionId, item.call.id, JSON.stringify({ ok: false, error: error instanceof Error ? error.message : 'Skill loading failed' }))
+    }
+    finally {
+      emit({ type: 'tool', name: LOAD_SKILL_TOOL, status: 'end', callId: item.call.id })
+    }
   }
   for (const item of exports) {
     if (sessionWantsStop(session) || signal?.aborted) {
@@ -1249,6 +1299,16 @@ export async function runAgentLoop(sessionId: string, emit: Emit, signal?: Abort
       const requireLayerPlan = hasLayerImage && !requireLayerAdjust && needsLayerDescriptionCard(session.messages)
       const requireLayerConfirm = hasLayerImage && !requireLayerAdjust && !requireLayerPlan && layerSplitNeedsConfirm(session.messages)
       emit({ type: 'status', status: 'thinking' })
+      const enabledUserSkills = await listEnabledUserCatalog().catch(() => [])
+      const userSkillCatalogMessage = enabledUserSkills.length
+        ? {
+            role: 'system' as const,
+            content: `Enabled user skills are available on demand. If the user explicitly invokes one with /id, call load_skill({ id: "id" }) before following it.\n${enabledUserSkills.map(skill => `- /${skill.id} — ${skill.name}: ${skill.description}`).join('\n')}`,
+          }
+        : null
+      const normalLlmMessages = userSkillCatalogMessage
+        ? [...session.messages, userSkillCatalogMessage]
+        : session.messages
       const toolAcc: Array<{
         index: number
         id?: string
@@ -1269,7 +1329,7 @@ export async function runAgentLoop(sessionId: string, emit: Emit, signal?: Abort
                     : requireLayerPlan
                       ? 'The user selected Describe the layers. Your next response MUST call ask_user with one question id layer_split_plan. Inspect the supplied image and offer concrete image-specific extraction plans, plus Other with allow_custom: true. Recommend the best-fitting plan. Use the established conversation language. Do not ask for a description in ordinary text and do not repeat the method question.'
                       : 'The user confirmed layer selection boxes. Each source has an original image and a boxed-overlay preview attached. Visually compare boxed vs original; map each visible numbered box to the object by appearance and position. Do not expect bbox coordinates in the prompt. Your next response MUST call ask_user with exactly one question id layer_split_confirm. List each box on its own line, then ask for confirmation. Options must include confirm, adjust, and Other. Do not call the splitter yet.' }]
-                : session.messages,
+                : normalLlmMessages,
           requiredTool: requireLayerAdjust || requireLayerPlan || requireLayerConfirm ? ASK_USER_TOOL : undefined,
           disableTools: missingLayerImage || summarizeImageEdit,
           tools: [...openAiTools.filter(tool => !((session.quality === 'custom' || selectedModelIds(session).length) && [GENERATE_IMAGE_TOOL, GENERATE_VIDEO_TOOL, REMOVE_BACKGROUND_TOOL].includes(tool.function.name))), ...registeredModelTools],

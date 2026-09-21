@@ -1,6 +1,6 @@
 # Image Object Removal
 
-Use when the user invokes `/image-object-removal`, Image Object Removal, `image-object-removal`, or clearly asks to remove objects from an image (对象移除 / remove object / erase object). This dedicated workflow takes precedence over generic image-editing and single-generator for object removal.
+Use when the user invokes `/image-object-removal`, Image Object Removal, `image-object-removal`, or clearly asks to remove objects from an image (remove object / erase object). This dedicated workflow takes precedence over generic image-editing and single-generator for object removal.
 
 ## Resolve image first
 
@@ -10,7 +10,7 @@ Identify the user's actual source still in this request (chat upload or clearly 
 
 Once a source image is available, decide whether a method card is needed:
 
-1. **Already clear in text** — the user already named what to remove in this request (for example “移除掉图片里的两个人”, “remove the two people”, “erase the watermark in the corner”) together with the image. **Do not** call `ask_user` for `object_removal_method`. Treat the request as the **text description** path and continue under that section immediately. Do not ask them to pick annotate vs describe.
+1. **Already clear in text** — the user already named what to remove in this request (for example “remove the two people” or “erase the watermark in the corner”) together with the image. **Do not** call `ask_user` for `object_removal_method`. Treat the request as the **text description** path and continue under that section immediately. Do not ask them to pick annotate vs describe.
 2. **Ambiguous / no removal target yet** — they only invoked the skill or uploaded an image without saying what to remove, or they clearly want to mark on a canvas. **Immediately** call **ask_user** with exactly one question id `object_removal_method` (the in-chat choice card / popup). Offer:
    - **Annotate** (`annotate`) — draw boxes and/or paint green masks on the objects to remove (recommended when they have not already described the target).
    - **Text description** (`describe`) — describe what to remove in natural language only.

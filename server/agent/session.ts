@@ -37,6 +37,8 @@ export interface AgentSession {
   title?: string
   projectId?: string
   bffUrl?: string
+  /** Skill bodies explicitly loaded into this session by load_skill. */
+  loadedSkillIds?: string[]
   quality: AgentQuality
   confirmPolicy: AgentConfirmPolicy
   updatedAt: number
@@ -69,6 +71,7 @@ function persistDatabase(session: AgentSession) {
     images: session.images,
     pendingConfirmation: session.pendingConfirmation,
     pendingChoice: session.pendingChoice,
+    loadedSkillIds: session.loadedSkillIds,
     updatedAt: session.updatedAt,
     bffUrl: session.bffUrl,
   })
@@ -155,6 +158,9 @@ function hydrateLoaded(loaded: AgentSession): AgentSession {
   loaded.images = Array.isArray(loaded.images) ? loaded.images : []
   loaded.pendingConfirmation = loaded.pendingConfirmation || null
   loaded.pendingChoice = loaded.pendingChoice || null
+  loaded.loadedSkillIds = Array.isArray(loaded.loadedSkillIds)
+    ? [...new Set(loaded.loadedSkillIds.filter(id => /^[a-z][a-z0-9-]{1,63}$/.test(String(id))).map(String))].slice(0, 16)
+    : []
   loaded.quality = parseAgentQuality(loaded.quality)
   loaded.confirmPolicy = loaded.confirmPolicy === 'auto' || loaded.confirmPolicy === 'when_needed'
     ? loaded.confirmPolicy
@@ -163,9 +169,9 @@ function hydrateLoaded(loaded: AgentSession): AgentSession {
   archiveTranscript(loaded)
   loaded.messages = trimTranscript(loaded.messages)
   if (loaded.messages[0]?.role === 'system')
-    loaded.messages[0] = { role: 'system', content: sessionMediaPrompt(loaded.images, loaded.confirmPolicy) }
+    loaded.messages[0] = { role: 'system', content: sessionMediaPrompt(loaded.images, loaded.confirmPolicy, loaded.loadedSkillIds) }
   else
-    loaded.messages.unshift({ role: 'system', content: sessionMediaPrompt(loaded.images, loaded.confirmPolicy) })
+    loaded.messages.unshift({ role: 'system', content: sessionMediaPrompt(loaded.images, loaded.confirmPolicy, loaded.loadedSkillIds) })
   if (dropStalePending(loaded)) {
     persistDisk(loaded)
     persistDatabase(loaded)
@@ -223,6 +229,7 @@ function sessionFromStorage(snapshot: StoredSessionSnapshot): AgentSession {
     images: snapshot.images,
     pendingConfirmation: snapshot.pendingConfirmation,
     pendingChoice: snapshot.pendingChoice,
+    loadedSkillIds: snapshot.loadedSkillIds || [],
     busy: false,
     title: snapshot.title || '',
     projectId: snapshot.projectId || '',
@@ -340,6 +347,7 @@ export function createSession(options?: {
     images: [],
     pendingConfirmation: null,
     pendingChoice: null,
+    loadedSkillIds: [],
     busy: false,
     stopRequested: false,
     title: '',
@@ -415,7 +423,7 @@ export function touch(session: AgentSession) {
   schedulePersist(session)
 }
 export function refreshSessionPrompt(session: AgentSession) {
-  const content = sessionMediaPrompt(session.images, session.confirmPolicy || 'always')
+  const content = sessionMediaPrompt(session.images, session.confirmPolicy || 'always', session.loadedSkillIds || [])
   if (session.messages[0]?.role === 'system')
     session.messages[0] = { role: 'system', content }
   else

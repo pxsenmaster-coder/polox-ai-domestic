@@ -1,6 +1,6 @@
-import type { SkillDocument } from '../agent/skills.ts'
-import { isBuiltinSkillId, isValidSkillId, parseSkillMarkdown } from '../agent/skills.ts'
-import { isRegisteredToolName } from './registeredTools.ts'
+import type { SkillDocument } from '../agent/skills'
+import { isBuiltinSkillId, isValidSkillId, parseSkillMarkdown } from '../agent/skills'
+import { isRegisteredToolName } from './registeredTools'
 
 export const MAX_SKILL_BODY_CHARS = 50_000
 export const MAX_SKILL_REQUIRES = 24

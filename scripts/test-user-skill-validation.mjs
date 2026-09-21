@@ -1,6 +1,36 @@
 import assert from 'node:assert/strict'
-import { parseSkillMarkdown } from '../server/agent/skills.ts'
-import { validateUserSkillMarkdown } from '../server/utils/skillValidation.ts'
+import { readFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
+import { dirname, resolve } from 'node:path'
+import vm from 'node:vm'
+import ts from 'typescript'
+
+const root = resolve(import.meta.dirname, '..')
+const require = createRequire(import.meta.url)
+const cache = new Map()
+function load(file) {
+  if (cache.has(file))
+    return cache.get(file)
+  const module = { exports: {} }
+  const source = readFileSync(file, 'utf8').replaceAll('import.meta.url', JSON.stringify(`file://${file.replaceAll('\\', '/')}`))
+  const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText
+  vm.runInNewContext(code, {
+    module,
+    exports: module.exports,
+    require: (id) => {
+      if (id.startsWith('.') || id.startsWith('~~/')) {
+        const target = id.startsWith('~~/') ? resolve(root, id.slice(3)) : resolve(dirname(file), id)
+        return load(`${target}.ts`)
+      }
+      return require(id)
+    },
+  }, { filename: file })
+  cache.set(file, module.exports)
+  return module.exports
+}
+
+const { parseSkillMarkdown } = load(resolve(root, 'server/agent/skills.ts'))
+const { validateUserSkillMarkdown } = load(resolve(root, 'server/utils/skillValidation.ts'))
 
 const valid = `---
 id: album-layout
@@ -23,7 +53,7 @@ Plan the page, then generate the requested image layers.
 
 const parsed = parseSkillMarkdown(valid, 'draft-skill', 'user')
 assert.equal(parsed.frontmatter.id, 'album-layout')
-assert.deepEqual(parsed.frontmatter.requires, ['ask_user', 'generate_image'])
+assert.equal(JSON.stringify(parsed.frontmatter.requires), JSON.stringify(['ask_user', 'generate_image']))
 assert.equal(parsed.frontmatter.safety.maxGenerationsPerRun, 4)
 const result = validateUserSkillMarkdown(valid)
 assert.equal(result.ok, true)

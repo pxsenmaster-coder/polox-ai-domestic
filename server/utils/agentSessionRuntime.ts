@@ -22,6 +22,7 @@ export interface AgentRuntimeSnapshot {
   images: unknown[]
   pendingConfirmation: unknown
   pendingChoice: unknown
+  loadedSkillIds: unknown
   updatedAt: number
 }
 function clip(value: unknown, max: number) {
@@ -250,6 +251,9 @@ export function runtimeFromDoc(doc: IAgentChat): AgentRuntimeSnapshot | null {
     images,
     pendingConfirmation: sanitizePending(runtime.pendingConfirmation),
     pendingChoice: sanitizePending(runtime.pendingChoice),
+    loadedSkillIds: Array.isArray(runtime.loadedSkillIds)
+      ? runtime.loadedSkillIds.filter((id): id is string => typeof id === 'string').slice(0, 16)
+      : [],
     updatedAt: Number(runtime.updatedAt) || new Date(doc.lastEventAt || doc.updatedAt).getTime(),
   }
 }
@@ -291,6 +295,7 @@ export async function upsertAgentRuntime(input: {
   images?: unknown
   pendingConfirmation?: unknown
   pendingChoice?: unknown
+  loadedSkillIds?: unknown
   updatedAt?: unknown
 }) {
   const sessionId = String(input.sessionId || '').trim()
@@ -305,6 +310,9 @@ export async function upsertAgentRuntime(input: {
   const messages = sanitizeMessages(input.messages)
   const pendingConfirmation = sanitizePending(input.pendingConfirmation)
   const pendingChoice = sanitizePending(input.pendingChoice)
+  const loadedSkillIds = Array.isArray(input.loadedSkillIds)
+    ? input.loadedSkillIds.filter((id): id is string => typeof id === 'string' && /^[a-z][a-z0-9-]{1,63}$/.test(id)).slice(0, 16)
+    : []
   const updatedAt = Number(input.updatedAt) || Date.now()
   const existingRuntime = existing?.runtime && typeof existing.runtime === 'object'
     ? existing.runtime as Record<string, unknown>
@@ -322,6 +330,7 @@ export async function upsertAgentRuntime(input: {
     images,
     pendingConfirmation,
     pendingChoice,
+    loadedSkillIds,
     updatedAt,
   }
   const update: Record<string, unknown> = {

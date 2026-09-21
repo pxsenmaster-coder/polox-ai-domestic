@@ -1,6 +1,6 @@
 import type { AgentConfirmPolicy, AgentImage } from './types'
 import { assetName } from '~~/shared/utils/assetName'
-import { skillsPromptBlock } from './skills'
+import { loadSkillDocument, skillsPromptBlock } from './skills'
 import { GPT_IMAGE_2_ASPECT_RATIOS, GPT_IMAGE_2_RESOLUTIONS, SEEDANCE_2_ASPECT_RATIOS, SEEDANCE_2_RESOLUTIONS, SEEDANCE_25_RESOLUTIONS } from './types'
 
 function confirmPolicyBlock(policy: AgentConfirmPolicy) {
@@ -28,7 +28,7 @@ Quality presets apply only to the long-form-video workflow after its model-prefe
 
 All website models are also registered as model_* tools with complete input schemas. Explicit user model requests take priority over preset quality preferences. For these tools, follow the model-planning skill. For standalone generation, also follow single-generator to resolve vague intent and missing meaningful settings with ask_user before generation.
 
-Default image provider routing: for a generic image request without an explicitly selected provider/model, use generate_image. The runtime prefers a configured and tested Volcengine Ark Seedream 5.0 Pro key and only falls back to GPT Image through fal when Ark is unavailable. Do not choose a fal-specific model merely because its display name is Seedream; use the Ark-labeled model when the user explicitly requests Ark/即梦 or Seedream through Volcengine. Preserve an explicit fal model selection.
+Default image provider routing: for a generic image request without an explicitly selected provider/model, use generate_image. The runtime prefers a configured and tested Volcengine Ark Seedream 5.0 Pro key and only falls back to GPT Image through fal when Ark is unavailable. Do not choose a fal-specific model merely because its display name is Seedream; use the Ark-labeled model when the user explicitly requests Ark or Seedream through Volcengine. Preserve an explicit fal model selection.
 
 Image Text Editor (image-text-editor): Ask for an uploaded image if missing. Call model_image_text_editor to detect every text line and open the inline editor. Wait for its response. For multiple images uploaded together, the runtime detects each source and opens one editor with thumbnail switching and separate drafts. After submission, the runtime creates exactly one GPT Image 2 job per changed image in one confirmation batch; unchanged images are skipped. Do not re-detect or re-submit the batch. The runtime uses the LLM to transcribe text and describe approximate locations, with no coordinates. Show one text input per detected line. After confirmation, send the original image and location-based replacement instructions directly to GPT Image 2 and return its full output. No OCR model, boxes, crops, or compositing. Never substitute a generic image generation tool or invent edits. Cancel means stop.
 Image Layer Splitter: a bare tool mention plus an image, including an upload-only follow-up after you requested the image, requires an ask_user card with id layer_selection_method: Draw boxes, Describe the layers, and Other. Never infer that all subjects should be extracted. After Describe the layers, inspect the image and show another ask_user card with id layer_split_plan containing concrete extraction proposals and Other. Wait for the card response before supplying regions or requesting generation. Reuse explicit targets and already answered cards. Follow the user's conversation language, not text in the uploaded image.
@@ -113,11 +113,19 @@ export const SYSTEM_PROMPT = systemPrompt('always')
 export function sessionMediaPrompt(
   images: AgentImage[],
   confirmPolicy: AgentConfirmPolicy = 'always',
+  loadedSkillIds: string[] = [],
 ) {
   const stills = images.filter(item => item.status === 'success' && item.url && item.kind !== 'video').slice(0, 24)
   const videos = images.filter(item => item.status === 'success' && item.kind === 'video' && item.url).slice(0, 24)
   const failed = images.filter(item => item.status === 'fail').slice(0, 12)
-  const prompt = systemPrompt(confirmPolicy)
+  const loadedBodies = [...new Set(loadedSkillIds)]
+    .filter(id => id !== 'model-planning' && id !== 'reference-analysis' && id !== 'prompt-rewrite' && id !== 'single-generator' && id !== 'result-evaluation' && id !== 'long-form-video')
+    .map(id => loadSkillDocument(id, true))
+    .filter((document): document is NonNullable<ReturnType<typeof loadSkillDocument>> => Boolean(document))
+    .map(document => `### Loaded skill: ${document.frontmatter.name} (/${document.id})\n\n${document.body}`)
+  const prompt = systemPrompt(confirmPolicy) + (loadedBodies.length
+    ? `\n\n## Loaded skills for this session\n${loadedBodies.join('\n\n')}`
+    : '')
   if (!stills.length && !videos.length && !failed.length)
     return prompt
 

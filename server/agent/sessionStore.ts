@@ -29,6 +29,7 @@ export interface StoredSessionSnapshot {
   images: AgentImage[]
   pendingConfirmation: RemotePendingConfirmation | null
   pendingChoice: RemotePendingChoice | null
+  loadedSkillIds?: string[]
   updatedAt: number
 }
 function asSnapshot(raw: AgentRuntimeSnapshot): StoredSessionSnapshot {
@@ -46,6 +47,9 @@ function asSnapshot(raw: AgentRuntimeSnapshot): StoredSessionSnapshot {
     pendingChoice: raw.pendingChoice && typeof raw.pendingChoice === 'object'
       ? raw.pendingChoice as RemotePendingChoice
       : null,
+    loadedSkillIds: Array.isArray(raw.loadedSkillIds)
+      ? raw.loadedSkillIds.filter((id): id is string => typeof id === 'string').slice(0, 16)
+      : [],
     updatedAt: Number(raw.updatedAt) || Date.now(),
   }
 }
@@ -79,6 +83,7 @@ export async function putStoredSession(input: {
   images: AgentImage[]
   pendingConfirmation: RemotePendingConfirmation | null
   pendingChoice: RemotePendingChoice | null
+  loadedSkillIds?: string[]
   updatedAt: number
   bffUrl?: string
 }) {
@@ -93,6 +98,7 @@ export async function putStoredSession(input: {
       images: input.images,
       pendingConfirmation: input.pendingConfirmation,
       pendingChoice: input.pendingChoice,
+      loadedSkillIds: input.loadedSkillIds,
       updatedAt: input.updatedAt,
     })
   }

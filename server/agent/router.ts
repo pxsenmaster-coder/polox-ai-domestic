@@ -114,7 +114,7 @@ export async function dispatchAgentRequest(input: {
       body: {
         ok: true,
         inProcess: true,
-        tools: ['generate_image', 'remove_background', 'generate_video', 'concat_videos', 'ask_user'],
+        tools: ['generate_image', 'remove_background', 'generate_video', 'concat_videos', 'ask_user', 'load_skill'],
       },
     }
   }

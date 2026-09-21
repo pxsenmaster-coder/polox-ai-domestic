@@ -23,6 +23,7 @@ export const REMOVE_BACKGROUND_TOOL = 'remove_background'
 export const GENERATE_VIDEO_TOOL = 'generate_video'
 export const CONCAT_VIDEO_TOOL = 'concat_videos'
 export const ASK_USER_TOOL = 'ask_user'
+export const LOAD_SKILL_TOOL = 'load_skill'
 export const MAX_CONCAT_CLIPS = 20
 export const MAX_ASK_QUESTIONS = 6
 export const MAX_ASK_OPTIONS = 8
@@ -242,10 +243,42 @@ export const openAiTools = [
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: LOAD_SKILL_TOOL,
+      description: 'Load the full body of an enabled skill by id into this session. Free and read-only. Use when the user types /skill-id or when a skill catalog summary is not enough. It does not generate media or require confirmation.',
+      parameters: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          id: {
+            type: 'string',
+            description: 'Skill id in lowercase kebab-case, for example image-object-removal or album-layout.',
+          },
+        },
+        required: ['id'],
+      },
+    },
+  },
 ]
 
 function asString(value: unknown) {
   return typeof value === 'string' ? value.trim() : ''
+}
+
+export function parseLoadSkillArgs(raw: string) {
+  let parsed: Record<string, unknown>
+  try {
+    parsed = JSON.parse(raw) as Record<string, unknown>
+  }
+  catch {
+    throw new Error('load_skill arguments were not valid JSON')
+  }
+  const id = asString(parsed.id)
+  if (!/^[a-z][a-z0-9-]{1,63}$/.test(id))
+    throw new Error('id must be a lowercase kebab-case skill id')
+  return { id }
 }
 
 function isHttpUrl(value: string) {

@@ -9,6 +9,12 @@ export const navMenu: NavMenu[] = [
         icon: 'i-lucide-home',
         link: '/',
       },
+      {
+        title: 'Skills',
+        icon: 'i-lucide-wand-sparkles',
+        link: '/skills',
+        new: true,
+      },
 
     ],
   },

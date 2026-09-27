@@ -114,10 +114,6 @@ export async function createLibraryAsset(libraryId: string, input: {
   })
 }
 
-function escapeRegex(value: string) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-}
-
 export async function searchLibraryAssets(
   options: { q?: string, limit?: number } = {},
 ): Promise<AssetLibraryAssetSearchItem[]> {

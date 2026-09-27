@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import type { AssetLibraryPublic } from '~~/shared/types/assetLibrary'
+import { toast } from 'vue-sonner'
 import {
   ASSET_LIBRARY_DELETE_CONFIRMATION,
   ASSET_LIBRARY_DESCRIPTION_MAX,
   ASSET_LIBRARY_NAME_MAX,
   nextAssetLibraryTitle,
 } from '~~/shared/types/assetLibrary'
-import { toast } from 'vue-sonner'
 import { readErrorMessage } from '~~/shared/utils/apiError'
 import AssetLibraryCard from '@/components/asset-libraries/AssetLibraryCard.vue'
 import AssetLibraryDeleteDialog from '@/components/asset-libraries/AssetLibraryDeleteDialog.vue'
@@ -117,7 +117,8 @@ async function confirmDelete() {
 
   deleting.value = true
   try {
-    await $fetch(`/api/asset-libraries/${deletingLibrary.value.id}`, {
+    const endpoint: string = `/api/asset-libraries/${deletingLibrary.value.id}`
+    await $fetch(endpoint, {
       method: 'DELETE',
       body: {
         confirmation: ASSET_LIBRARY_DELETE_CONFIRMATION,

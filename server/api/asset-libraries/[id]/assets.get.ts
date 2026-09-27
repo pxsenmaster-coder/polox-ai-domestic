@@ -1,4 +1,4 @@
-import type { AssetLibraryAssetList } from '../../../../../shared/types/assetLibrary'
+import type { AssetLibraryAssetList } from '../../../../shared/types/assetLibrary'
 import { listLibraryAssets } from '../../../utils/assetLibraryAssets'
 import { connectDatabase } from '../../../utils/sqlite'
 

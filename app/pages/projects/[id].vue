@@ -8,9 +8,9 @@ import { toast } from 'vue-sonner'
 import { isGenerationActive } from '~~/shared/types/generation'
 import { PROJECT_NAME_MAX } from '~~/shared/types/project'
 import { readErrorMessage } from '~~/shared/utils/apiError'
+import AssetLibraryImportDialog from '@/components/asset-libraries/AssetLibraryImportDialog.vue'
 import ProjectMoveJobDialog from '@/components/projects/ProjectMoveJobDialog.vue'
 import { canvasMediaNavigationKey } from '~/composables/useCanvasMediaNavigation'
-import AssetLibraryImportDialog from '@/components/asset-libraries/AssetLibraryImportDialog.vue'
 
 const canvas = ref<{
   focusMedia: (url: string) => Promise<boolean>
@@ -613,7 +613,7 @@ async function onRemoveObjectCanvas(payload: {
       @update:open="moveOpen = $event"
       @confirm="confirmMove"
     />
-      <AssetLibraryImportDialog
+    <AssetLibraryImportDialog
       :open="libraryImportOpen"
       :count="pendingLibraryAssets.length"
       :pending="libraryImportPending"

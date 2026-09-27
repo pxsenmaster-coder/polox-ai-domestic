@@ -9,9 +9,11 @@ const props = withDefaults(defineProps<{
   state?: 'pending' | 'answered' | 'skipped'
   answers?: ChoiceAnswer[]
   pending?: boolean
+  hideLayerEditor?: boolean
   sourceImages?: { id: string, url: string }[]
 }>(), {
   pending: false,
+  hideLayerEditor: false,
 })
 
 const emit = defineEmits<{

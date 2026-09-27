@@ -47,11 +47,11 @@ export function nextAssetLibraryTitle(existingNames: string[]) {
 export function assetLibraryMediaKind(mimeType: string, fileName = ''): AssetLibraryMediaKind | null {
   const type = String(mimeType || '').toLowerCase()
   const name = String(fileName || '').toLowerCase()
-  if (type.startsWith('image/') || /\.(jpe?g|png|webp|gif|avif|bmp)$/.test(name))
+  if (type.startsWith('image/') || /\.(?:jpe?g|png|webp|gif|avif|bmp)$/.test(name))
     return 'image'
-  if (type.startsWith('video/') || /\.(mp4|mov|mkv)$/.test(name))
+  if (type.startsWith('video/') || /\.(?:mp4|mov|mkv)$/.test(name))
     return 'video'
-  if (type.startsWith('audio/') || /\.(mp3|wav|aac|ogg|m4a)$/.test(name))
+  if (type.startsWith('audio/') || /\.(?:mp3|wav|aac|ogg|m4a)$/.test(name))
     return 'audio'
   return null
 }
@@ -101,4 +101,3 @@ export interface AssetLibraryAssetSearchItem extends AssetLibraryAssetPublic {
 export interface AssetLibraryAssetSearchList {
   items: AssetLibraryAssetSearchItem[]
 }
-

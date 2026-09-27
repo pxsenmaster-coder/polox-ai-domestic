@@ -60,7 +60,6 @@ function saveEdit() {
   }
   emit('rename', name)
 }
-
 </script>
 
 <template>

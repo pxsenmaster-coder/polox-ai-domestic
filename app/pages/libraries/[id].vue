@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import type { AssetLibraryAssetPublic, AssetLibraryPublic } from '~~/shared/types/assetLibrary'
+import { ArrowLeft, Pencil } from 'lucide-vue-next'
+import { toast } from 'vue-sonner'
 import {
   ASSET_LIBRARY_ACCEPT_ATTR,
   ASSET_LIBRARY_DESCRIPTION_MAX,
@@ -7,8 +9,6 @@ import {
   ASSET_LIBRARY_NAME_MAX,
   isAssetLibraryAcceptFile,
 } from '~~/shared/types/assetLibrary'
-import { ArrowLeft, Pencil } from 'lucide-vue-next'
-import { toast } from 'vue-sonner'
 import { readErrorMessage } from '~~/shared/utils/apiError'
 import AssetLibraryMediaCard from '@/components/asset-libraries/AssetLibraryMediaCard.vue'
 
@@ -270,9 +270,13 @@ async function confirmDelete() {
 const { open: openLightbox } = useMediaLightbox()
 
 function onOpen(asset: AssetLibraryAssetPublic) {
+  if (asset.kind === 'audio') {
+    window.open(asset.url, '_blank', 'noopener,noreferrer')
+    return
+  }
   openLightbox({
     url: asset.url,
-    kind: asset.kind === 'video' ? 'video' : asset.kind === 'audio' ? 'audio' : 'image',
+    kind: asset.kind === 'video' ? 'video' : 'image',
     alt: asset.name,
   })
 }

@@ -620,7 +620,6 @@ function parseAskOption(raw: unknown, index: number, seen: Set<string>): ChoiceO
   }
 }
 
-
 function formatLayerSplitConfirmPrompt(prompt: string) {
   const text = prompt.replace(/\r\n/g, '\n').trim()
   if (!text || /\n\s*Box\s+\d+/i.test(text))
@@ -661,7 +660,7 @@ function parseAskQuestion(raw: unknown, index: number, seen: Set<string>): Choic
   const displayPrompt = unique === 'layer_split_confirm' ? formatLayerSplitConfirmPrompt(prompt) : prompt
   return {
     id: unique,
-    prompt,
+    prompt: displayPrompt,
     options: withCustomChoiceOption(options),
     ...(title ? { title } : {}),
     ...(recommendedId ? { recommendedId } : {}),

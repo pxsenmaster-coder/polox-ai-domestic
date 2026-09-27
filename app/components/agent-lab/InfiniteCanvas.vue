@@ -9,6 +9,12 @@ import { isImageLayerSplitterModel } from '~~/shared/utils/imageLayerSplitter'
 import { isMediaAudioUrl, isMediaVideoUrl } from '~~/shared/utils/seedance25'
 import { byCanvasOrder, CARD_CHROME_HEIGHT, CARD_HEIGHT, CARD_WIDTH, CELL_X, CELL_Y, clampZoom, findFreeRect, fitMediaRect, intersectsSelection, inViewport, isDefaultCanvasGrid, latestCanvasAsset, MAX_PLAYING_VIDEOS, MAX_VISIBLE, resizeFromCorner, snapCanvasRect, zoomAt } from '~/utils/infiniteCanvas'
 
+interface CanvasLibraryAsset {
+  url: string
+  name: string
+  kind: 'image' | 'video' | 'audio'
+}
+
 const props = defineProps<{
   jobs: GenerationJobPublic[]
   images: AgentImage[]
@@ -19,13 +25,14 @@ const props = defineProps<{
   loading?: boolean
   emptyMessage?: string
 }>()
-export type CanvasLibraryAsset = { url: string, name: string, kind: 'image' | 'video' | 'audio' }
 const emit = defineEmits<{
   deleteMany: [ids: string[]]
   moveMany: [ids: string[]]
   delete: [id: string]
   move: [id: string]
   attach: [payload: { urls: string[], prompt: string }]
+  saveToLibrary: [assets: CanvasLibraryAsset[]]
+  saveToLibraryMany: [assets: CanvasLibraryAsset[]]
   removeObject: [payload: { urls: string[], prompt: string }]
 }>()
 interface Asset {
@@ -83,6 +90,7 @@ const sourceAssets = computed(() => {
         name: layerName,
         prompt: '',
         video: false,
+        audio: false,
         cutout: false,
         layerGroup: true,
         state: job.state,
@@ -93,7 +101,7 @@ const sourceAssets = computed(() => {
     for (const [index, url] of (job.resultUrls.length ? job.resultUrls : ['']).entries()) {
       if (url)
         urls.add(url)
-      result.push({ id: `${job.taskId}:${index}`, taskId: job.taskId, createdAt: job.createdAt, completedAt: job.completedAt, job, url, name: assetName({ id: `${job.taskId}:${index}`, prompt: job.prompt, name: String(job.input.asset_name || matchingAgentAsset(props.images, job.taskId, url)?.name || ''), kind: job.category === 'Video' ? 'video' : 'still', videoMode: String(job.input.videoMode || '') }), prompt: job.prompt, video: job.category === 'Video' || isMediaVideoUrl(url), cutout: /remove.?background|cutout/i.test(job.task), state: job.state, error: job.failMsg })
+      result.push({ id: `${job.taskId}:${index}`, taskId: job.taskId, createdAt: job.createdAt, completedAt: job.completedAt, job, url, name: assetName({ id: `${job.taskId}:${index}`, prompt: job.prompt, name: String(job.input.asset_name || matchingAgentAsset(props.images, job.taskId, url)?.name || ''), kind: job.category === 'Video' ? 'video' : 'still', videoMode: String(job.input.videoMode || '') }), prompt: job.prompt, video: job.category === 'Video' || isMediaVideoUrl(url), audio: isMediaAudioUrl(url), cutout: /remove.?background|cutout/i.test(job.task), state: job.state, error: job.failMsg })
     }
   }
   for (const url of urls)
@@ -114,7 +122,7 @@ const sourceAssets = computed(() => {
     }
     if (taskIds.has(persistedId) || taskIds.has(item.providerTaskId || item.id))
       continue
-    result.push({ id: `${persistedId}:0`, url: item.url, name: assetName(item), prompt: item.prompt, video: item.kind === 'video', cutout: item.kind === 'cutout', state: item.status, error: item.error })
+    result.push({ id: `${persistedId}:0`, url: item.url, name: assetName(item), prompt: item.prompt, video: item.kind === 'video', audio: isMediaAudioUrl(item.url), cutout: item.kind === 'cutout', state: item.status, error: item.error })
   }
   return result
 })

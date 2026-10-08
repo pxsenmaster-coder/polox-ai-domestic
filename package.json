@@ -57,7 +57,8 @@
     "test:object-removal": "node --experimental-transform-types --test scripts/test-image-object-removal.mjs scripts/test-agent-skills.mjs",
     "test:skills": "node --experimental-transform-types --test scripts/test-agent-skills.mjs scripts/test-user-skill-validation.mjs scripts/test-user-skill-runtime.mjs",
     "test:ark": "node --test scripts/test-ark-models.mjs",
-    "test:layers": "node --experimental-transform-types --test scripts/test-ark-models.mjs scripts/test-agent-layer-brief.mjs scripts/test-canvas-layer-interaction.mjs scripts/test-canvas-layer-state.mjs scripts/test-image-layer-composition.mjs scripts/test-generation-layer-public.mjs scripts/test-agent-layer-results.mjs"
+    "test:llm": "node --test scripts/test-agent-llm-image-budget.mjs",
+    "test:layers": "node --experimental-transform-types --test scripts/test-ark-models.mjs scripts/test-agent-layer-brief.mjs scripts/test-canvas-arrange.mjs scripts/test-canvas-library-assets.mjs scripts/test-canvas-layer-interaction.mjs scripts/test-canvas-layer-state.mjs scripts/test-image-layer-composition.mjs scripts/test-generation-layer-public.mjs scripts/test-agent-layer-results.mjs"
   },
   "dependencies": {
     "@fal-ai/client": "^1.10.1",

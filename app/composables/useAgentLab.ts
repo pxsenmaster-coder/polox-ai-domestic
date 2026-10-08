@@ -1725,6 +1725,36 @@ function createAgentLab(options?: {
       revokePreview(item)
     attachments.value = attachments.value.filter(entry => entry.id !== id)
   }
+  function addCanvasAssets(items: Array<{
+    id?: string
+    url: string
+    name: string
+    kind: 'image' | 'video' | 'audio'
+  }>) {
+    const knownUrls = new Set(allImages.value.map(item => item.url).filter(Boolean))
+    const additions: AgentImage[] = []
+    for (const item of items) {
+      const url = String(item.url || '').trim()
+      if (!url || knownUrls.has(url))
+        continue
+      knownUrls.add(url)
+      additions.push({
+        id: item.id ? `library_${item.id}` : crypto.randomUUID(),
+        kind: item.kind === 'video' ? 'video' : 'upload',
+        status: 'success',
+        prompt: item.name || 'Library asset',
+        name: item.name || 'Library asset',
+        aspectRatio: 'auto',
+        resolution: '',
+        url,
+        error: '',
+      })
+    }
+    if (!additions.length)
+      return
+    images.value = [...images.value, ...additions]
+    writeStore()
+  }
   function attachUrls(items: Array<{
     url: string
     name?: string
@@ -2850,6 +2880,7 @@ function createAgentLab(options?: {
     stopping,
     attachFiles,
     attachUrls,
+    addCanvasAssets,
     removeAttachment,
     resolveConfirmation,
     resolveChoice,

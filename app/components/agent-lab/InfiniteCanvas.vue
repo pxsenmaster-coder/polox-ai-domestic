@@ -1,15 +1,21 @@
 <script setup lang="ts">
 import type { CanvasLayerState, CanvasRect } from '~~/shared/types/canvas'
 import type { GenerationJobPublic, GenerationJobState, ImageLayerBoundingBox, ImageLayerPublic } from '~~/shared/types/generation'
+import type { CanvasArrangeOrder } from '~~/shared/utils/canvasArrange'
 import type { AgentImage } from '~/composables/useAgentLab'
 import type { CanvasCorner, CanvasGuide, CanvasPoint } from '~/utils/infiniteCanvas'
+import { assetLibraryMediaKind, isAssetLibraryAcceptFile } from '~~/shared/types/assetLibrary'
 import { isGenerationActive } from '~~/shared/types/generation'
 import { assetName, matchingAgentAsset } from '~~/shared/utils/assetName'
+import { ARRANGE_CELL_HEIGHT, ARRANGE_CELL_WIDTH, arrangeCanvasItems } from '~~/shared/utils/canvasArrange'
+import { canvasDropPoint, canvasDropUploadCounts, parseCanvasLibraryAsset } from '~~/shared/utils/canvasAssetDrop'
 import { isImageLayerSplitterModel } from '~~/shared/utils/imageLayerSplitter'
 import { isMediaAudioUrl, isMediaVideoUrl } from '~~/shared/utils/seedance25'
+import { useAppLocale } from '~/composables/useAppLocale'
 import { byCanvasOrder, CARD_CHROME_HEIGHT, CARD_HEIGHT, CARD_WIDTH, CELL_X, CELL_Y, clampZoom, findFreeRect, fitMediaRect, intersectsSelection, inViewport, isDefaultCanvasGrid, latestCanvasAsset, MAX_PLAYING_VIDEOS, MAX_VISIBLE, resizeFromCorner, snapCanvasRect, zoomAt } from '~/utils/infiniteCanvas'
 
 interface CanvasLibraryAsset {
+  id?: string
   url: string
   name: string
   kind: 'image' | 'video' | 'audio'
@@ -33,6 +39,7 @@ const emit = defineEmits<{
   attach: [payload: { urls: string[], prompt: string }]
   saveToLibrary: [assets: CanvasLibraryAsset[]]
   saveToLibraryMany: [assets: CanvasLibraryAsset[]]
+  addLibraryAssets: [assets: CanvasLibraryAsset[]]
   removeObject: [payload: { urls: string[], prompt: string }]
 }>()
 interface Asset {
@@ -40,6 +47,9 @@ interface Asset {
   completedAt?: string
   id: string
   taskId?: string
+  batchId?: string
+  resultIndex?: number
+  sourceUrls?: string[]
   url: string
   prompt: string
   name: string
@@ -57,6 +67,44 @@ interface LayerHistoryEntry {
   after?: CanvasLayerState
 }
 const { positions, camera, nextSlot, ready, loadError, markNode, markView, ensure, flush, hideNode } = useCanvasLayout(props.projectId)
+const arrangeOrder = ref<CanvasArrangeOrder>('oldest')
+const arrangeMenuOpen = ref(false)
+const arrangedMode = ref(false)
+const librarySheetOpen = ref(false)
+const canvasDropActive = ref(false)
+const canvasDropError = ref('')
+const { t } = useAppLocale()
+const arrangeOrderKey = `canvas-arrange-order:${props.projectId}`
+const arrangedModeKey = `canvas-arranged:${props.projectId}`
+
+function setArrangedMode(active: boolean) {
+  arrangedMode.value = active
+  try {
+    if (active)
+      localStorage.setItem(arrangedModeKey, 'true')
+    else
+      localStorage.removeItem(arrangedModeKey)
+  }
+  catch { /* Canvas placement still persists through useCanvasLayout. */ }
+}
+
+function inputSourceUrls(input: Record<string, unknown>): string[] {
+  const keys = ['sourceUrl', 'source_url', 'image_url', 'imageUrl', 'inputUrls', 'input_urls', 'image_urls', 'image_input', 'reference_image_urls', 'first_frame_url', 'start_image_url']
+  return keys.flatMap((key) => {
+    const value = input[key]
+    return typeof value === 'string' ? [value] : Array.isArray(value) ? value.filter((url): url is string => typeof url === 'string') : []
+  })
+}
+
+const arrangeOptions = computed<{ value: CanvasArrangeOrder, label: string }[]>(() => [
+  { value: 'oldest', label: t('Oldest first', '最早优先') },
+  { value: 'newest', label: t('Newest first', '最新优先') },
+  { value: 'type', label: t('Group by media type', '按媒体类型分组') },
+])
+const arrangeDescription = computed(() => arrangeOrder.value === 'type'
+  ? t('Group by media type; keep each batch together', '按媒体类型整理，同批结果保持在一起')
+  : t(`Arrange by creation time: ${arrangeOrder.value === 'oldest' ? 'oldest first' : 'newest first'}; keep each batch together`, `按创建时间整理：${arrangeOrder.value === 'oldest' ? '最早优先' : '最新优先'}；同批结果保持在一起`))
+
 const sourceAssets = computed(() => {
   const result: Asset[] = []
   const urls = new Set<string>()
@@ -101,7 +149,7 @@ const sourceAssets = computed(() => {
     for (const [index, url] of (job.resultUrls.length ? job.resultUrls : ['']).entries()) {
       if (url)
         urls.add(url)
-      result.push({ id: `${job.taskId}:${index}`, taskId: job.taskId, createdAt: job.createdAt, completedAt: job.completedAt, job, url, name: assetName({ id: `${job.taskId}:${index}`, prompt: job.prompt, name: String(job.input.asset_name || matchingAgentAsset(props.images, job.taskId, url)?.name || ''), kind: job.category === 'Video' ? 'video' : 'still', videoMode: String(job.input.videoMode || '') }), prompt: job.prompt, video: job.category === 'Video' || isMediaVideoUrl(url), audio: isMediaAudioUrl(url), cutout: /remove.?background|cutout/i.test(job.task), state: job.state, error: job.failMsg })
+      result.push({ id: `${job.taskId}:${index}`, taskId: job.taskId, batchId: job.taskId, resultIndex: index, sourceUrls: inputSourceUrls(job.input), createdAt: job.createdAt, completedAt: job.completedAt, job, url, name: assetName({ id: `${job.taskId}:${index}`, prompt: job.prompt, name: String(job.input.asset_name || matchingAgentAsset(props.images, job.taskId, url)?.name || ''), kind: job.category === 'Video' ? 'video' : 'still', videoMode: String(job.input.videoMode || '') }), prompt: job.prompt, video: job.category === 'Video' || isMediaVideoUrl(url), audio: isMediaAudioUrl(url), cutout: /remove.?background|cutout/i.test(job.task), state: job.state, error: job.failMsg })
     }
   }
   for (const url of urls)
@@ -243,11 +291,11 @@ const { open } = useMediaLightbox()
 const urlPositions = new Map<string, CanvasRect>()
 let frame = 0
 let pendingMove: { x: number, y: number } | undefined
-let drag: { pointer: number, x: number, y: number, origin: CanvasPoint, cardOrigin?: CanvasRect, cameraOrigin?: { x: number, y: number, zoom: number }, id?: string } | undefined
+let drag: { pointer: number, x: number, y: number, origin: CanvasPoint, cardOrigin?: CanvasRect, cameraOrigin?: { x: number, y: number, zoom: number }, arrangedModeOrigin?: boolean, id?: string } | undefined
 let layerDrag: { pointer: number, x: number, y: number, assetId: string, layerId: string, before?: CanvasLayerState } | undefined
 let layerResize: { pointer: number, x: number, y: number, assetId: string, layerId: string, corner: CanvasCorner, before?: CanvasLayerState } | undefined
 let observerReady = false
-let resize: { id: string, pointer: number, corner: CanvasCorner, x: number, y: number, origin: CanvasRect } | undefined
+let resize: { id: string, pointer: number, corner: CanvasCorner, x: number, y: number, origin: CanvasRect, arrangedModeOrigin: boolean } | undefined
 const corners: CanvasCorner[] = ['nw', 'ne', 'sw', 'se']
 const cornerLabels = { nw: 'top left', ne: 'top right', sw: 'bottom left', se: 'bottom right' }
 let wheelTimer: ReturnType<typeof setTimeout> | undefined
@@ -310,6 +358,18 @@ function reconcile() {
       }
     }
   }
+  if (added.length && arrangedMode.value) {
+    const arranged = arrangeCanvasItems(assets.value.flatMap((asset) => {
+      const rect = next.get(asset.id)
+      return rect ? [{ ...asset, taskId: asset.taskId || asset.batchId, rect }] : []
+    }), arrangeOrder.value)
+    for (const [id, rect] of arranged) {
+      next.set(id, rect)
+      if (!added.includes(id))
+        added.push(id)
+    }
+    nextSlot.value = assets.value.length
+  }
   // Bound retained layouts across history windows, without dropping any server results.
   if (next.size > 1000) {
     const active = new Set(assets.value.map(item => item.id))
@@ -338,6 +398,8 @@ watch(() => JSON.stringify(assets.value.map(item => [item.id, item.name])), asyn
 function fitAsset(id: string, size: { width: number, height: number }) {
   const rect = positions.value.get(id)
   if (!rect)
+    return
+  if (arrangedMode.value && rect.width === ARRANGE_CELL_WIDTH && rect.height === ARRANGE_CELL_HEIGHT)
     return
   let fitted = fitMediaRect(rect, size.width, size.height)
   if (Math.abs(fitted.height - rect.height) < 0.01)
@@ -617,6 +679,13 @@ async function focusMedia(url: string) {
 }
 defineExpose({ focusMedia, hideAsset: hideNode })
 onMounted(async () => {
+  try {
+    const savedOrder = localStorage.getItem(arrangeOrderKey)
+    if (savedOrder === 'oldest' || savedOrder === 'newest' || savedOrder === 'type')
+      arrangeOrder.value = savedOrder
+    arrangedMode.value = localStorage.getItem(arrangedModeKey) === 'true'
+  }
+  catch { /* Canvas layout still works when browser storage is unavailable. */ }
   observerReady = true
   await loadLayout()
 })
@@ -669,29 +738,118 @@ function fit() {
   Object.assign(camera, { x: (width.value - (right - left) * scale) / 2 - left * scale, y: (height.value - (bottom - top) * scale) / 2 - top * scale, zoom: scale })
   persist()
 }
-function arrange() {
-  let x = 0
-  let y = 0
-  let rowHeight = 0
-  const next = new Map(positions.value)
-  for (const [index, item] of assets.value.entries()) {
-    const rect = positions.value.get(item.id)
-    if (!rect)
-      continue
-    if (index > 0 && index % 5 === 0) {
-      x = 0
-      y += rowHeight + 40
-      rowHeight = 0
-    }
-    next.set(item.id, { ...rect, x, y })
-    x += rect.width + 40
-    rowHeight = Math.max(rowHeight, rect.height)
+function arrange(order: CanvasArrangeOrder = arrangeOrder.value) {
+  arrangeOrder.value = order
+  try {
+    localStorage.setItem(arrangeOrderKey, order)
   }
+  catch { /* Layout coordinates still persist through useCanvasLayout. */ }
+  arrangeMenuOpen.value = false
+  setArrangedMode(true)
+  const next = new Map(positions.value)
+  const items = assets.value.flatMap((item) => {
+    const rect = positions.value.get(item.id)
+    return rect ? [{ ...item, taskId: item.taskId || item.batchId, rect }] : []
+  })
+  for (const [id, rect] of arrangeCanvasItems(items, order))
+    next.set(id, rect)
   positions.value = next
   for (const item of assets.value)
     markNode(item.id)
   nextSlot.value = assets.value.length
   fit()
+}
+function onCanvasDragOver(event: DragEvent) {
+  const types = [...(event.dataTransfer?.types || [])]
+  if (!types.includes('Files') && !types.includes('application/x-polox-library-asset'))
+    return
+  event.preventDefault()
+  if (event.dataTransfer)
+    event.dataTransfer.dropEffect = 'copy'
+  canvasDropActive.value = true
+}
+function onCanvasDragLeave(event: DragEvent) {
+  if (event.currentTarget === event.target)
+    canvasDropActive.value = false
+}
+function libraryAssetFromPayload(value: string): CanvasLibraryAsset | null {
+  return parseCanvasLibraryAsset(value)
+}
+async function placeLibraryAssets(items: CanvasLibraryAsset[], point?: CanvasPoint) {
+  const valid = items.filter(item => item.url && /^(?:https?:\/\/|\/(?!\/))/i.test(item.url))
+  if (!valid.length)
+    return
+  canvasDropError.value = ''
+  emit('addLibraryAssets', valid)
+  await nextTick()
+  const matched = valid.flatMap((item) => {
+    const asset = sourceAssets.value.find(value => value.url === item.url)
+    return asset ? [{ id: asset.id }] : []
+  })
+  if (matched.length)
+    await ensure(matched.map(item => item.id))
+  const resolved = matched.flatMap(({ id }) => {
+    const rect = positions.value.get(id)
+    return rect ? [{ id, rect }] : []
+  })
+  if (!resolved.length)
+    return
+  const next = new Map(positions.value)
+  const origin = point || { x: (width.value / 2 - camera.x) / camera.zoom, y: (height.value / 2 - camera.y) / camera.zoom }
+  if (point)
+    setArrangedMode(false)
+  resolved.forEach(({ id, rect }, index) => {
+    const placed = { ...rect, x: origin.x + index * 28, y: origin.y + index * 28 }
+    next.set(id, placed)
+    markNode(id)
+  })
+  positions.value = next
+  persist()
+}
+async function onCanvasDrop(event: DragEvent) {
+  event.preventDefault()
+  canvasDropActive.value = false
+  const bounds = surface.value?.getBoundingClientRect()
+  const point = bounds ? canvasDropPoint(event.clientX, event.clientY, bounds, camera) : undefined
+  const serializedAsset = event.dataTransfer?.getData('application/x-polox-library-asset')
+  if (serializedAsset) {
+    const asset = libraryAssetFromPayload(serializedAsset)
+    if (asset)
+      await placeLibraryAssets([asset], point)
+    else
+      canvasDropError.value = 'This library item could not be added. Reopen the library and try again.'
+    return
+  }
+  const files = [...(event.dataTransfer?.files || [])]
+  const accepted = files.filter(file => isAssetLibraryAcceptFile(file) && assetLibraryMediaKind(file.type, file.name))
+  if (!accepted.length) {
+    if (files.length)
+      canvasDropError.value = t('This file type is not supported on the canvas.', '此文件类型不支持放入画布。')
+    return
+  }
+  canvasDropError.value = ''
+  const uploaded: CanvasLibraryAsset[] = []
+  const attempted = accepted.slice(0, 12)
+  for (const file of attempted) {
+    try {
+      const body = new FormData()
+      body.append('file', file)
+      const result = await $fetch<{ url: string }>('/api/uploads', { method: 'POST', body })
+      const kind = assetLibraryMediaKind(file.type, file.name)
+      if (result.url && kind)
+        uploaded.push({ id: `drop_${crypto.randomUUID()}`, url: result.url, name: file.name, kind })
+    }
+    catch { /* Report an accurate summary after every file has been attempted. */ }
+  }
+  if (uploaded.length)
+    await placeLibraryAssets(uploaded, point)
+  const counts = canvasDropUploadCounts(files.length, accepted.length, attempted.length, uploaded.length)
+  if (counts.failed || counts.skipped) {
+    canvasDropError.value = t(
+      `${counts.uploaded} added; ${counts.failed} upload failed; ${counts.skipped} skipped.`,
+      `已添加 ${counts.uploaded} 个；${counts.failed} 个上传失败；${counts.skipped} 个已跳过。`,
+    )
+  }
 }
 function down(event: PointerEvent, id?: string) {
   if (!ready.value || loadError.value)
@@ -747,7 +905,7 @@ function down(event: PointerEvent, id?: string) {
     x: event.clientX,
     y: event.clientY,
     origin: nodeId ? { x: positions.value.get(nodeId)!.x, y: positions.value.get(nodeId)!.y } : { x: camera.x, y: camera.y },
-    ...(nodeId ? { cardOrigin: { ...positions.value.get(nodeId)! } } : { cameraOrigin: { x: camera.x, y: camera.y, zoom: camera.zoom } }),
+    ...(nodeId ? { cardOrigin: { ...positions.value.get(nodeId)! }, arrangedModeOrigin: arrangedMode.value } : { cameraOrigin: { x: camera.x, y: camera.y, zoom: camera.zoom } }),
     id: nodeId,
   }
 }
@@ -761,7 +919,7 @@ function startResize(event: PointerEvent, id: string, corner: CanvasCorner) {
   pinch = undefined
   pointers.clear()
   surface.value?.setPointerCapture(event.pointerId)
-  resize = { id, pointer: event.pointerId, corner, x: event.clientX, y: event.clientY, origin: { ...positions.value.get(id)! } }
+  resize = { id, pointer: event.pointerId, corner, x: event.clientX, y: event.clientY, origin: { ...positions.value.get(id)! }, arrangedModeOrigin: arrangedMode.value }
 }
 function resizeKey(event: KeyboardEvent, id: string, corner: CanvasCorner) {
   const shifts: Record<string, [number, number]> = { ArrowLeft: [-10, 0], ArrowRight: [10, 0], ArrowUp: [0, -10], ArrowDown: [0, 10] }
@@ -770,6 +928,7 @@ function resizeKey(event: KeyboardEvent, id: string, corner: CanvasCorner) {
     return
   event.preventDefault()
   event.stopPropagation()
+  setArrangedMode(false)
   positions.value = new Map(positions.value).set(id, resizeFromCorner(positions.value.get(id)!, corner, ...shift))
   markNode(id)
 }
@@ -888,6 +1047,8 @@ function applyMove() {
   if (Math.abs(dx) + Math.abs(dy) < 3 && !interacting.value)
     return
   interacting.value = true
+  if (drag.id || resize)
+    setArrangedMode(false)
   if (drag.id) {
     const proposed = { ...positions.value.get(drag.id)!, x: drag.cardOrigin!.x + dx / camera.zoom, y: drag.cardOrigin!.y + dy / camera.zoom }
     const targets = visible.value.filter(asset => asset.id !== drag!.id).map(asset => asset.point)
@@ -939,6 +1100,7 @@ function move(event: PointerEvent) {
     frame = requestAnimationFrame(applyMove)
 }
 function end(cancelled = false) {
+  const arrangedModeOrigin = drag?.id ? drag.arrangedModeOrigin : resize?.arrangedModeOrigin
   if (frame) {
     cancelAnimationFrame(frame)
     frame = 0
@@ -970,6 +1132,8 @@ function end(cancelled = false) {
       restoreLayerState(layerDrag.assetId, layerDrag.before)
     if (layerResize)
       restoreLayerState(layerResize.assetId, layerResize.before)
+    if (arrangedModeOrigin !== undefined)
+      setArrangedMode(arrangedModeOrigin)
   }
   else {
     applyMove()
@@ -1162,6 +1326,7 @@ onBeforeUnmount(() => {
       :style="{ backgroundSize: `${24 * camera.zoom}px ${24 * camera.zoom}px`, backgroundPosition: `${camera.x}px ${camera.y}px` }"
       @pointerdown="down($event)" @pointermove="move" @pointerup="completePointer" @pointercancel="cancelPointer" @lostpointercapture="cancelPointer"
       @wheel.prevent="wheel" @keydown="keydown" @keyup="space = false" @blur="space = false"
+      @dragover="onCanvasDragOver" @dragleave="onCanvasDragLeave" @drop="onCanvasDrop"
     >
       <div class="absolute origin-top-left" :style="{ 'transform': `translate(${camera.x}px, ${camera.y}px) scale(${camera.zoom})`, '--canvas-selection-width': selectionWidth }">
         <article
@@ -1200,6 +1365,7 @@ onBeforeUnmount(() => {
               :url="asset.url"
               :alt="(asset.prompt || asset.name).slice(0, 300)"
               :video="asset.video"
+              :audio="asset.audio"
               :playing="playingVideos.has(asset.id)"
               @dimensions="fitAsset(asset.id, $event)"
             />
@@ -1360,6 +1526,15 @@ onBeforeUnmount(() => {
         <Icon name="i-lucide-x" />
       </button>
     </div>
+    <div v-if="canvasDropActive" class="pointer-events-none absolute inset-3 z-30 grid place-items-center rounded-xl border-2 border-dashed border-primary bg-primary/10 text-sm font-medium text-primary" aria-hidden="true">
+      {{ t('Drop to add media to this canvas', '松开即可将素材添加到画布') }}
+    </div>
+    <div v-if="canvasDropError" class="absolute top-16 left-1/2 z-30 flex max-w-md -translate-x-1/2 items-center gap-2 rounded-lg border border-destructive/40 bg-background/95 px-3 py-2 text-xs text-destructive shadow-lg" role="alert">
+      <span>{{ canvasDropError }}</span>
+      <button class="canvas-action shrink-0" aria-label="Dismiss upload message" @click="canvasDropError = ''">
+        <Icon name="i-lucide-x" />
+      </button>
+    </div>
     <div v-if="!ready || loadError" class="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-background/80 text-sm" role="status">
       <span>{{ loadError ? 'Could not load canvas layout.' : 'Loading canvas layout…' }}</span>
       <button v-if="loadError" class="rounded border px-4 py-2" @click="loadLayout">
@@ -1391,9 +1566,56 @@ onBeforeUnmount(() => {
           <button class="canvas-tool" :class="hand ? 'bg-accent' : ''" aria-label="Pan canvas" :aria-pressed="hand" @click="hand = true">
             <Icon name="i-lucide-hand" />
           </button>
-          <button class="canvas-tool" aria-label="Arrange objects by creation order" title="Arrange: oldest first, newest last" @click="arrange">
-            <Icon name="i-lucide-layout-grid" />
+          <button class="canvas-tool" :class="librarySheetOpen ? 'bg-accent' : ''" :aria-label="t('Open asset library', '打开素材库')" :aria-pressed="librarySheetOpen" :title="t('Asset library', '素材库')" @click="librarySheetOpen = !librarySheetOpen">
+            <Icon name="i-lucide-library" />
           </button>
+          <div class="relative">
+            <button
+              class="canvas-tool"
+              data-testid="canvas-arrange-button"
+              :aria-label="t('Arrange canvas', '整理画布')"
+              :aria-expanded="arrangeMenuOpen"
+              aria-haspopup="menu"
+              :title="arrangeDescription"
+              @click="arrangeMenuOpen = !arrangeMenuOpen"
+              @keydown.esc.stop="arrangeMenuOpen = false"
+            >
+              <Icon name="i-lucide-layout-grid" />
+            </button>
+            <div
+              v-if="arrangeMenuOpen"
+              role="menu"
+              :aria-label="t('Arrange canvas', '整理画布')"
+              class="absolute bottom-10 left-0 z-40 grid w-60 gap-1 rounded-xl border border-border bg-popover p-2 text-popover-foreground shadow-lg"
+              @keydown.esc.stop="arrangeMenuOpen = false"
+            >
+              <p class="px-2 py-1 text-[10px] text-muted-foreground">
+                {{ t('Sort order · keep each batch together', '排序方式 · 同一批次保持在一起') }}
+              </p>
+              <button
+                v-for="option in arrangeOptions"
+                :key="option.value"
+                type="button"
+                role="menuitemradio"
+                :aria-checked="arrangeOrder === option.value"
+                class="rounded-lg px-2 py-1.5 text-left text-xs hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring"
+                @click="arrange(option.value)"
+              >
+                <span class="mr-1">{{ arrangeOrder === option.value ? '✓' : '' }}</span>
+                {{ option.label }}
+              </button>
+              <div class="my-1 border-t border-border" />
+              <button
+                type="button"
+                role="menuitem"
+                data-testid="canvas-arrange-now"
+                class="rounded-lg px-2 py-1.5 text-left text-xs font-medium hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring"
+                @click="arrange()"
+              >
+                {{ t('Arrange canvas now', '立即整理画布') }}
+              </button>
+            </div>
+          </div>
         </div>
         <div class="flex items-center gap-1 rounded-xl border border-border bg-background/95 p-1">
           <button class="canvas-tool" aria-label="Zoom out" @click="zoom(camera.zoom / 1.2)">
@@ -1411,6 +1633,11 @@ onBeforeUnmount(() => {
         </div>
       </div>
     </div>
+    <AssetLibrarySheet
+      :open="librarySheetOpen"
+      @close="librarySheetOpen = false"
+      @add="placeLibraryAssets($event)"
+    />
   </div>
 </template>
 

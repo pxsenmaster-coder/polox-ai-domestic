@@ -10,8 +10,10 @@ import {
 import { readErrorMessage } from '~~/shared/utils/apiError'
 import AssetLibraryCard from '@/components/asset-libraries/AssetLibraryCard.vue'
 import AssetLibraryDeleteDialog from '@/components/asset-libraries/AssetLibraryDeleteDialog.vue'
+import { useAppLocale } from '~/composables/useAppLocale'
 
 const { public: publicConfig } = useRuntimeConfig()
+const { t } = useAppLocale()
 const { libraries, loaded, loadLibraries } = useAssetLibraries()
 
 useSeoMeta({
@@ -143,13 +145,13 @@ async function confirmDelete() {
     <div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
       <div class="flex flex-col gap-1">
         <p class="text-sm text-muted-foreground">
-          Asset Libraries
+          {{ t('Asset Libraries', '素材库') }}
         </p>
         <h1 class="text-2xl font-semibold tracking-tight">
-          Asset Libraries
+          {{ t('Asset Libraries', '素材库') }}
         </h1>
         <p class="max-w-2xl text-sm text-muted-foreground">
-          Higher-level libraries you can @-mention from any project. Library contents come next.
+          {{ t('Higher-level libraries you can @-mention from any project. Library contents come next.', '可在任意项目中通过 @ 引用的共享素材库。') }}
         </p>
       </div>
       <Button
@@ -157,7 +159,7 @@ async function confirmDelete() {
         class="h-9 shrink-0 rounded-lg px-3 shadow-none"
         @click="openCreate"
       >
-        New library
+        {{ t('New library', '新建素材库') }}
       </Button>
     </div>
 
@@ -172,7 +174,7 @@ async function confirmDelete() {
       v-else-if="libraries.length === 0"
       class="rounded-2xl border border-border bg-muted/35 px-4 py-8 text-center text-sm text-muted-foreground"
     >
-      No asset libraries yet.
+      {{ t('No asset libraries yet.', '还没有素材库。') }}
     </p>
 
     <div
@@ -192,10 +194,10 @@ async function confirmDelete() {
       <DialogContent class="rounded-2xl border-border bg-card shadow-none sm:max-w-md">
         <DialogHeader class="gap-1">
           <DialogTitle>
-            New asset library
+            {{ t('New asset library', '新建素材库') }}
           </DialogTitle>
           <DialogDescription>
-            Give this library a title. A description is optional.
+            {{ t('Give this library a title. A description is optional.', '为素材库命名；描述为可选项。') }}
           </DialogDescription>
         </DialogHeader>
 
@@ -206,7 +208,7 @@ async function confirmDelete() {
           <FieldGroup>
             <Field>
               <FieldLabel html-for="asset-library-name">
-                Title
+                {{ t('Title', '名称') }}
               </FieldLabel>
               <Input
                 id="asset-library-name"
@@ -218,9 +220,9 @@ async function confirmDelete() {
             </Field>
             <Field>
               <FieldLabel html-for="asset-library-description">
-                Description
+                {{ t('Description', '描述') }}
                 <span class="font-normal text-muted-foreground">
-                  (optional)
+                  ({{ t('optional', '选填') }})
                 </span>
               </FieldLabel>
               <Textarea
@@ -228,7 +230,7 @@ async function confirmDelete() {
                 v-model="createDescription"
                 rows="3"
                 :maxlength="ASSET_LIBRARY_DESCRIPTION_MAX"
-                placeholder="What this library is for"
+                :placeholder="t('What this library is for', '描述这个素材库的用途')"
                 class="min-h-20 rounded-xl bg-input/30 shadow-none"
               />
             </Field>
@@ -242,14 +244,14 @@ async function confirmDelete() {
               :disabled="creating"
               @click="createOpen = false"
             >
-              Cancel
+              {{ t('Cancel', '取消') }}
             </Button>
             <Button
               type="submit"
               class="h-8 rounded-lg px-3 text-xs shadow-none"
               :disabled="creating"
             >
-              {{ creating ? 'Creating…' : 'Create' }}
+              {{ creating ? t('Creating…', '正在创建…') : t('Create', '创建') }}
             </Button>
           </DialogFooter>
         </form>
@@ -260,10 +262,10 @@ async function confirmDelete() {
       <DialogContent class="rounded-2xl border-border bg-card shadow-none sm:max-w-md">
         <DialogHeader class="gap-1">
           <DialogTitle>
-            Edit asset library
+            {{ t('Edit asset library', '编辑素材库') }}
           </DialogTitle>
           <DialogDescription>
-            Update the title and description.
+            {{ t('Update the title and description.', '修改素材库名称和描述。') }}
           </DialogDescription>
         </DialogHeader>
 
@@ -274,7 +276,7 @@ async function confirmDelete() {
           <FieldGroup>
             <Field>
               <FieldLabel html-for="edit-asset-library-name">
-                Title
+                {{ t('Title', '名称') }}
               </FieldLabel>
               <Input
                 id="edit-asset-library-name"
@@ -286,9 +288,9 @@ async function confirmDelete() {
             </Field>
             <Field>
               <FieldLabel html-for="edit-asset-library-description">
-                Description
+                {{ t('Description', '描述') }}
                 <span class="font-normal text-muted-foreground">
-                  (optional)
+                  ({{ t('optional', '选填') }})
                 </span>
               </FieldLabel>
               <Textarea
@@ -296,7 +298,7 @@ async function confirmDelete() {
                 v-model="editDescription"
                 rows="3"
                 :maxlength="ASSET_LIBRARY_DESCRIPTION_MAX"
-                placeholder="What this library is for"
+                :placeholder="t('What this library is for', '描述这个素材库的用途')"
                 class="min-h-20 rounded-xl bg-input/30 shadow-none"
               />
             </Field>
@@ -310,14 +312,14 @@ async function confirmDelete() {
               :disabled="editing"
               @click="editOpen = false"
             >
-              Cancel
+              {{ t('Cancel', '取消') }}
             </Button>
             <Button
               type="submit"
               class="h-8 rounded-lg px-3 text-xs shadow-none"
               :disabled="editing"
             >
-              {{ editing ? 'Saving…' : 'Save' }}
+              {{ editing ? t('Saving…', '正在保存…') : t('Save', '保存') }}
             </Button>
           </DialogFooter>
         </form>

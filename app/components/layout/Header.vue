@@ -1,17 +1,28 @@
 <script setup lang="ts">
 import { studioToolBySlug } from '@/constants/usefulTools'
+import { useAppLocale } from '~/composables/useAppLocale'
 
 const route = useRoute()
+const { locale, t } = useAppLocale()
 
 function titleForSegment(item: string, href: string) {
   if (item === 'tools')
-    return 'Useful tools'
+    return t('Useful tools', '实用工具')
 
   if (item === 'projects')
-    return 'Projects'
+    return t('Projects', '项目')
 
   if (item === 'agent')
-    return 'Studio Agent'
+    return t('Studio Agent', '工作室助手')
+
+  if (item === 'skills')
+    return t('Skills', '技能')
+
+  if (item === 'libraries')
+    return t('Asset Libraries', '素材库')
+
+  if (item === 'agent-lab')
+    return t('Agent Lab', '智能创作')
 
   if (item === 'seedream')
     return 'Seedream 5.0 Pro'
@@ -29,7 +40,7 @@ function titleForSegment(item: string, href: string) {
     return 'GPT Image 2'
 
   if (href.startsWith('/projects/') && item !== 'projects')
-    return 'Project'
+    return t('Project', '项目详情')
 
   if (href.startsWith('/tools/')) {
     const slug = href.slice('/tools/'.length).split('/')[0] || ''
@@ -46,7 +57,7 @@ function titleForSegment(item: string, href: string) {
 
 function setLinks() {
   if (route.path === '/') {
-    return [{ title: 'Home', href: '/' }]
+    return [{ title: t('Home', '首页'), href: '/' }]
   }
 
   const segments = route.path.split('/').filter(item => item !== '')
@@ -61,7 +72,7 @@ function setLinks() {
     }
   })
 
-  return [{ title: 'Home', href: '/' }, ...breadcrumbs]
+  return [{ title: t('Home', '首页'), href: '/' }, ...breadcrumbs]
 }
 
 const links = ref<{
@@ -69,8 +80,8 @@ const links = ref<{
   href: string
 }[]>(setLinks())
 
-watch(() => route.path, (val) => {
-  if (val) {
+watch(() => [route.path, locale.value], ([path]) => {
+  if (path) {
     links.value = setLinks()
   }
 })
@@ -86,6 +97,7 @@ watch(() => route.path, (val) => {
       </div>
     </div>
     <div class="ml-auto flex items-center">
+      <LayoutLanguageSwitch />
       <ServiceConnection />
       <slot />
     </div>

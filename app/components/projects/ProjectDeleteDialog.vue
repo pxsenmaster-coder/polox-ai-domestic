@@ -1,16 +1,18 @@
 <script setup lang="ts">
 import { PROJECT_DELETE_CONFIRMATION } from '~~/shared/types/project'
+import { useAppLocale } from '~/composables/useAppLocale'
 
 const props = defineProps<{
   open: boolean
   pending?: boolean
   projectName?: string
 }>()
-
 const emit = defineEmits<{
   'update:open': [open: boolean]
   'confirm': []
 }>()
+
+const { t } = useAppLocale()
 
 const confirmation = ref('')
 const canDelete = computed(() => confirmation.value.trim() === PROJECT_DELETE_CONFIRMATION)
@@ -32,16 +34,16 @@ function onOpenChange(open: boolean) {
     <AlertDialogContent class="rounded-2xl border-border bg-card shadow-none sm:max-w-md">
       <AlertDialogHeader class="gap-2">
         <AlertDialogTitle>
-          Delete this project?
+          {{ t('Delete this project?', '删除此项目？') }}
         </AlertDialogTitle>
         <AlertDialogDescription>
-          This cannot be undone. All generations in {{ projectName || 'this project' }} will be moved to Default.
+          {{ t(`This cannot be undone. All generations in ${projectName || 'this project'} will be moved to Default.`, `此操作无法撤销。项目“${projectName || '此项目'}”中的所有生成结果将移至默认项目。`) }}
         </AlertDialogDescription>
       </AlertDialogHeader>
 
       <div class="grid gap-2">
         <Label for="delete-project-confirmation">
-          Type {{ PROJECT_DELETE_CONFIRMATION }} to confirm
+          {{ t(`Type ${PROJECT_DELETE_CONFIRMATION} to confirm`, `输入 ${PROJECT_DELETE_CONFIRMATION} 以确认`) }}
         </Label>
         <Input
           id="delete-project-confirmation"
@@ -56,7 +58,7 @@ function onOpenChange(open: boolean) {
 
       <AlertDialogFooter>
         <AlertDialogCancel class="rounded-lg shadow-none" :disabled="pending">
-          Cancel
+          {{ t('Cancel', '取消') }}
         </AlertDialogCancel>
         <Button
           class="rounded-lg bg-destructive text-white shadow-none hover:bg-destructive/90 disabled:opacity-40"
@@ -64,7 +66,7 @@ function onOpenChange(open: boolean) {
           @click="emit('confirm')"
         >
           <Spinner v-if="pending" class="size-4" />
-          Delete project
+          {{ t('Delete project', '删除项目') }}
         </Button>
       </AlertDialogFooter>
     </AlertDialogContent>

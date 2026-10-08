@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { GenerationProjectPublic } from '~~/shared/types/project'
+import { useAppLocale } from '~/composables/useAppLocale'
 
 const props = withDefaults(defineProps<{
   project: GenerationProjectPublic
@@ -7,11 +8,12 @@ const props = withDefaults(defineProps<{
 }>(), {
   showActions: false,
 })
-
 const emit = defineEmits<{
   edit: []
   delete: []
 }>()
+
+const { t } = useAppLocale()
 
 const coverStyle = computed(() => {
   if (!props.project.coverUrl)
@@ -46,7 +48,7 @@ const coverStyle = computed(() => {
           <span
             v-if="project.activeJobCount > 0"
             class="inline-flex shrink-0"
-            title="Generating"
+            :title="t('Generating', '正在生成')"
           >
             <Spinner class="size-3.5 text-muted-foreground" />
           </span>
@@ -61,7 +63,7 @@ const coverStyle = computed(() => {
     </NuxtLink>
     <div class="flex min-h-8 items-center justify-between gap-2 px-4 pb-4">
       <p class="min-w-0 truncate text-sm text-muted-foreground">
-        {{ project.assetCount }} {{ project.assetCount === 1 ? 'asset' : 'assets' }}
+        {{ project.assetCount }} {{ t(project.assetCount === 1 ? 'asset' : 'assets', '项素材') }}
       </p>
       <DropdownMenu
         v-if="showActions && !project.isDefault"
@@ -73,7 +75,7 @@ const coverStyle = computed(() => {
             variant="ghost"
             size="icon-sm"
             class="shrink-0 rounded-lg shadow-none"
-            :aria-label="`Actions for ${project.name}`"
+            :aria-label="t(`Actions for ${project.name}`, `${project.name} 的操作`)"
           >
             <Icon
               name="i-lucide-ellipsis-vertical"
@@ -83,13 +85,13 @@ const coverStyle = computed(() => {
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" class="min-w-36">
           <DropdownMenuItem @click="emit('edit')">
-            Edit
+            {{ t('Edit', '编辑') }}
           </DropdownMenuItem>
           <DropdownMenuItem
             variant="destructive"
             @click="emit('delete')"
           >
-            Delete
+            {{ t('Delete', '删除') }}
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

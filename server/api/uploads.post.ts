@@ -1,3 +1,4 @@
+import { assetLibraryMimeType } from '../../shared/types/assetLibrary'
 import { uploadFalFile } from '../utils/falFiles'
 import { saveMediaFile } from '../utils/localMedia'
 import { readServiceSettings } from '../utils/serviceSettings'
@@ -40,7 +41,8 @@ export default defineEventHandler(async (event) => {
       statusMessage: 'A file is required',
     })
   }
-  const media = MEDIA_BY_TYPE[file.type]
+  const mimeType = assetLibraryMimeType(file.type, file.name) || file.type.toLowerCase().split(';', 1)[0]!.trim()
+  const media = MEDIA_BY_TYPE[mimeType]
   if (!media) {
     throw createError({
       statusCode: 400,
@@ -55,13 +57,13 @@ export default defineEventHandler(async (event) => {
   }
   const key = `generator/uploads/${crypto.randomUUID()}.${media.extension}`
   const bytes = new Uint8Array(await file.arrayBuffer())
-  const localUrl = await saveMediaFile(key, bytes, file.type)
+  const localUrl = await saveMediaFile(key, bytes, mimeType)
   // Ark can consume local media as data URLs server-side, so fal is optional
   // for uploads. Keep the fal CDN URL when fal is configured for legacy models.
   let url = localUrl
   if (readServiceSettings().falKey) {
     try {
-      url = await uploadFalFile(bytes, file.type, `upload.${media.extension}`)
+      url = await uploadFalFile(bytes, mimeType, `upload.${media.extension}`)
     }
     catch (error) {
       console.warn('[upload] fal upload unavailable; using local media URL', error)

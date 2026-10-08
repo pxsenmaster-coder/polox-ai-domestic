@@ -1,13 +1,14 @@
-import type { AssetLibraryAssetSearchItem } from '~~/shared/types/assetLibrary'
-import type { GenerationJobPublic } from '~~/shared/types/generation'
-import { isMediaAudioUrl, isMediaVideoUrl } from '~~/shared/utils/seedance25'
 <script setup lang="ts">
 import type { AiModelConfig } from '~~/shared/types/aiModel'
+import type { AssetLibraryAssetSearchItem } from '~~/shared/types/assetLibrary'
+import type { GenerationJobPublic } from '~~/shared/types/generation'
 import type { AgentChatMessage, AgentConfirmPolicy, AgentImage, AgentListItem, AgentQuality, AgentStatus, ChoiceAnswer, ConfirmationPayload, PendingAttachment } from '~/composables/useAgentLab'
 import { ArrowUp, ChevronDown, Paperclip, Plus, Square, X } from 'lucide-vue-next'
 import { AGENT_MODELS, agentModelLogo, modelMention, readModelMentions, stripModelMentions } from '~~/shared/utils/agentModels'
 import { readErrorMessage } from '~~/shared/utils/apiError'
 import { isImageLayerSplitterModel } from '~~/shared/utils/imageLayerSplitter'
+import { isMediaAudioUrl, isMediaVideoUrl } from '~~/shared/utils/seedance25'
+import { useAppLocale } from '~/composables/useAppLocale'
 import { agentComposerPlaceholder } from '~/utils/agentComposerPlaceholder'
 import { confirmationWorking } from '~/utils/agentConfirmationState'
 import { messageMedia } from '~/utils/agentMessageMedia'
@@ -47,6 +48,7 @@ const props = withDefaults(defineProps<{
   stopping: false,
   choiceOpen: false,
 })
+
 const emit = defineEmits<{
   send: [
   ]
@@ -82,6 +84,9 @@ const emit = defineEmits<{
         id: string,
   ]
 }>()
+
+const { t } = useAppLocale()
+
 const draft = defineModel<string>('draft', { default: '' })
 const qualityPreference = defineModel<AgentQuality>('qualityPreference', { default: 'hobby' })
 const confirmPolicy = defineModel<AgentConfirmPolicy>('confirmPolicy', { default: 'always' })
@@ -702,12 +707,13 @@ function setConfirmPolicy(value: unknown) {
 }
 const confirmPolicyLabel = computed(() => {
   if (confirmPolicy.value === 'auto')
-    return 'Automatic'
+    return t('Automatic', '自动执行')
   if (confirmPolicy.value === 'when_needed')
-    return 'Review when needed'
-  return 'Always review'
+    return t('Review when needed', '必要时确认')
+  return t('Always review', '始终确认')
 })
-const activeTitle = computed(() => props.agents.find(agent => agent.id === props.activeAgentId)?.title || 'New agent')
+const activeTitle = computed(() => props.agents.find(agent => agent.id === props.activeAgentId)?.title || t('New agent', '新建助手'))
+const composerPlaceholder = computed(() => t(agentComposerPlaceholder(selectedModels.value), '输入 @ 选择模型，或描述你想创作的内容…'))
 function setActiveAgent(value: unknown) {
   const next = Array.isArray(value) ? value[0] : value
   if (typeof next === 'string' && next)
@@ -733,7 +739,7 @@ function setActiveAgent(value: unknown) {
       aria-hidden="true"
     >
       <div class="rounded-xl border border-dashed border-primary bg-card/90 px-4 py-3 text-sm font-medium text-foreground shadow-sm">
-        Drop to attach
+        {{ t('Drop to attach', '松开即可添加附件') }}
       </div>
     </div>
 
@@ -756,7 +762,7 @@ function setActiveAgent(value: unknown) {
               variant="ghost"
               size="icon-sm"
               class="size-7 shrink-0 rounded-lg"
-              aria-label="Switch agent"
+              :aria-label="t('Switch agent', '切换助手')"
             >
               <ChevronDown class="size-3.5 opacity-50" />
             </Button>
@@ -791,11 +797,11 @@ function setActiveAgent(value: unknown) {
         size="sm"
         class="h-8 shrink-0 gap-1 rounded-lg px-2 text-xs font-medium shadow-none"
         :disabled="!canCreateAgent"
-        aria-label="New agent"
+        :aria-label="t('New agent', '新建助手')"
         @click="emit('createAgent')"
       >
         <Plus class="size-3.5" />
-        New
+        {{ t('New', '新建') }}
       </Button>
     </div>
 
@@ -918,7 +924,7 @@ function setActiveAgent(value: unknown) {
           >
             <Spinner v-if="item.status === 'uploading'" class="size-4" />
             <span v-else class="px-1 text-center text-[10px] text-destructive">
-              Failed
+              {{ t('Failed', '失败') }}
             </span>
           </div>
           <button
@@ -937,18 +943,18 @@ function setActiveAgent(value: unknown) {
             v-if="mention && !composerLocked"
             :id="modelListId"
             role="listbox"
-            aria-label="Choose a model or project asset"
+            :aria-label="t('Choose a model or project asset', '选择模型或项目素材')"
             class="fixed z-[100] flex flex-col overflow-hidden rounded-xl border border-border bg-popover p-1 text-popover-foreground shadow-lg"
             :style="mentionStyle"
             @mousedown.prevent
           >
             <p class="hidden px-3 py-2 text-xs text-muted-foreground md:block">
-              ← → Switch columns · ↑ ↓ Navigate · Enter Select
+              {{ t('← → Switch columns · ↑ ↓ Navigate · Enter Select', '← → 切换栏目 · ↑ ↓ 导航 · Enter 选择') }}
             </p>
             <div class="grid min-h-0 flex-1 grid-cols-3 divide-x divide-border">
-              <div role="group" aria-label="Models" class="min-w-0 overflow-y-auto overscroll-contain">
+              <div role="group" :aria-label="t('Models', '模型')" class="min-w-0 overflow-y-auto overscroll-contain">
                 <p class="sticky top-0 z-10 bg-popover px-3 py-2 text-xs font-semibold">
-                  Models
+                  {{ t('Models', '模型') }}
                 </p>
                 <button
                   v-for="(model, index) in modelMatches"
@@ -966,12 +972,12 @@ function setActiveAgent(value: unknown) {
                   <span class="min-w-0 flex-1"><span class="block truncate text-sm font-medium">{{ model.name }}</span><span class="block text-xs text-muted-foreground">{{ model.task }}</span></span>
                 </button>
                 <p v-if="!modelMatches.length" class="px-3 py-4 text-sm text-muted-foreground" role="status">
-                  No matching models
+                  {{ t('No matching models', '没有匹配的模型') }}
                 </p>
               </div>
-              <div role="group" aria-label="Project assets" class="min-w-0 overflow-y-auto overscroll-contain">
+              <div role="group" :aria-label="t('Project assets', '项目素材')" class="min-w-0 overflow-y-auto overscroll-contain">
                 <p class="sticky top-0 z-10 bg-popover px-3 py-2 text-xs font-semibold">
-                  Project assets · {{ projectAssets.length }}
+                  {{ t(`Project assets · ${projectAssets.length}`, `项目素材 · ${projectAssets.length}`) }}
                 </p>
                 <button
                   v-for="(asset, index) in assetMatches" :id="`${modelListId}-assets-${index}`" :key="asset.id"
@@ -982,21 +988,21 @@ function setActiveAgent(value: unknown) {
                 >
                   <Icon v-if="asset.video" name="lucide:clapperboard" class="size-9 shrink-0" />
                   <img v-else :src="asset.url" alt="" loading="lazy" class="size-9 shrink-0 rounded object-contain">
-                  <span class="min-w-0"><span class="block truncate text-sm font-medium" :title="asset.name">{{ asset.name }}</span><span class="block text-xs text-muted-foreground">{{ asset.video ? 'Video' : 'Image' }}</span></span>
+                  <span class="min-w-0"><span class="block truncate text-sm font-medium" :title="asset.name">{{ asset.name }}</span><span class="block text-xs text-muted-foreground">{{ asset.video ? t('Video', '视频') : t('Image', '图片') }}</span></span>
                 </button>
                 <p v-if="projectAssetsLoading" class="px-3 py-2 text-xs text-muted-foreground" role="status">
-                  Loading project assets…
+                  {{ t('Loading project assets…', '正在加载项目素材…') }}
                 </p>
                 <p v-else-if="projectAssetsError" class="px-3 py-2 text-xs text-destructive" role="status">
                   {{ projectAssetsError }}
                 </p>
                 <p v-else-if="!assetMatches.length" class="px-3 py-4 text-sm text-muted-foreground" role="status">
-                  {{ projectAssets.length ? 'No matching assets' : 'No assets in this project yet' }}
+                  {{ projectAssets.length ? t('No matching assets', '没有匹配的素材') : t('No assets in this project yet', '此项目中还没有素材') }}
                 </p>
               </div>
-              <div role="group" aria-label="Asset libraries" class="min-w-0 overflow-y-auto overscroll-contain">
+              <div role="group" :aria-label="t('Asset libraries', '素材库')" class="min-w-0 overflow-y-auto overscroll-contain">
                 <p class="sticky top-0 z-10 bg-popover px-3 py-2 text-xs font-semibold">
-                  Asset libraries · {{ libraryAssetsForPicker.length }}
+                  {{ t(`Asset libraries · ${libraryAssetsForPicker.length}`, `素材库 · ${libraryAssetsForPicker.length}`) }}
                 </p>
                 <button
                   v-for="(asset, index) in libraryAssetMatches" :id="`${modelListId}-libraries-${index}`" :key="asset.id"
@@ -1008,16 +1014,16 @@ function setActiveAgent(value: unknown) {
                   <Icon v-if="asset.audio" name="lucide:music" class="size-9 shrink-0 text-muted-foreground" />
                   <Icon v-else-if="asset.video" name="lucide:clapperboard" class="size-9 shrink-0" />
                   <img v-else :src="asset.url" alt="" loading="lazy" class="size-9 shrink-0 rounded object-contain">
-                  <span class="min-w-0"><span class="block truncate text-sm font-medium" :title="asset.name">{{ asset.name }}</span><span class="block truncate text-xs text-muted-foreground">{{ asset.audio ? 'Audio' : asset.video ? 'Video' : 'Image' }} · {{ asset.libraryName }}</span></span>
+                  <span class="min-w-0"><span class="block truncate text-sm font-medium" :title="asset.name">{{ asset.name }}</span><span class="block truncate text-xs text-muted-foreground">{{ asset.audio ? t('Audio', '音频') : asset.video ? t('Video', '视频') : t('Image', '图片') }} · {{ asset.libraryName }}</span></span>
                 </button>
                 <p v-if="libraryAssetsLoading" class="px-3 py-2 text-xs text-muted-foreground" role="status">
-                  Loading library assets…
+                  {{ t('Loading library assets…', '正在加载素材库…') }}
                 </p>
                 <p v-else-if="libraryAssetsError" class="px-3 py-2 text-xs text-destructive" role="status">
                   {{ libraryAssetsError }}
                 </p>
                 <p v-else-if="!libraryAssetMatches.length" class="px-3 py-4 text-sm text-muted-foreground" role="status">
-                  {{ libraryAssetsForPicker.length ? 'No matching assets' : 'No library assets yet' }}
+                  {{ libraryAssetsForPicker.length ? t('No matching assets', '没有匹配的素材') : t('No library assets yet', '素材库中还没有素材') }}
                 </p>
               </div>
             </div>
@@ -1034,8 +1040,8 @@ function setActiveAgent(value: unknown) {
           :class="compactComposer
             ? 'max-md:max-h-10 max-md:min-h-10 max-md:py-2 md:max-h-[min(40vh,20rem)] md:min-h-[88px]'
             : 'max-h-[min(40vh,20rem)] min-h-[88px]'"
-          :placeholder="agentComposerPlaceholder(selectedModels)"
-          aria-label="Message to agent"
+          :placeholder="composerPlaceholder"
+          :aria-label="t('Message to agent', '发送消息给助手')"
           :aria-expanded="Boolean(mention)"
           :aria-controls="mention ? modelListId : undefined"
           :aria-activedescendant="activeMentionId"
@@ -1065,7 +1071,7 @@ function setActiveAgent(value: unknown) {
             size="icon-sm"
             class="rounded-lg"
             :disabled="composerLocked"
-            aria-label="Attach image"
+            :aria-label="t('Attach image', '添加图片附件')"
             @click="fileInput?.click()"
           >
             <Paperclip />
@@ -1079,7 +1085,7 @@ function setActiveAgent(value: unknown) {
                   size="sm"
                   class="h-8 max-w-full gap-1 rounded-lg px-2 text-xs font-medium shadow-none"
                   :disabled="prefsLocked"
-                  aria-label="Generation approval"
+                  :aria-label="t('Generation approval', '生成确认方式')"
                 >
                   <span class="truncate">{{ confirmPolicyLabel }}</span>
                   <ChevronDown class="size-3.5 shrink-0 opacity-50" />
@@ -1088,7 +1094,7 @@ function setActiveAgent(value: unknown) {
               <DropdownMenuContent align="end" class="min-w-72">
                 <DropdownMenuGroup>
                   <DropdownMenuLabel>
-                    Generation approval
+                    {{ t('Generation approval', '生成确认方式') }}
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
                   <DropdownMenuRadioGroup
@@ -1097,26 +1103,20 @@ function setActiveAgent(value: unknown) {
                   >
                     <DropdownMenuRadioItem value="auto" class="items-start">
                       <span class="flex flex-col gap-0.5">
-                        <span>Automatic</span>
-                        <span class="text-xs font-normal text-muted-foreground">
-                          Spend without clicking Confirm. The agent decides.
-                        </span>
+                        <span>{{ t('Automatic', '自动执行') }}</span>
+                        <span class="text-xs font-normal text-muted-foreground">{{ t('Spend without clicking Confirm. The agent decides.', '无需点击确认，由助手自行判断并执行。') }}</span>
                       </span>
                     </DropdownMenuRadioItem>
                     <DropdownMenuRadioItem value="when_needed" class="items-start">
                       <span class="flex flex-col gap-0.5">
-                        <span>Review when needed</span>
-                        <span class="text-xs font-normal text-muted-foreground">
-                          Confirm only when the agent thinks a review is needed.
-                        </span>
+                        <span>{{ t('Review when needed', '必要时确认') }}</span>
+                        <span class="text-xs font-normal text-muted-foreground">{{ t('Confirm only when the agent thinks a review is needed.', '仅在助手认为需要审核时再进行确认。') }}</span>
                       </span>
                     </DropdownMenuRadioItem>
                     <DropdownMenuRadioItem value="always" class="items-start">
                       <span class="flex flex-col gap-0.5">
-                        <span>Always review</span>
-                        <span class="text-xs font-normal text-muted-foreground">
-                          Confirm every generation.
-                        </span>
+                        <span>{{ t('Always review', '始终确认') }}</span>
+                        <span class="text-xs font-normal text-muted-foreground">{{ t('Confirm every generation.', '每次生成前都需要确认。') }}</span>
                       </span>
                     </DropdownMenuRadioItem>
                   </DropdownMenuRadioGroup>
@@ -1126,7 +1126,7 @@ function setActiveAgent(value: unknown) {
             <KbdGroup
               v-if="!canStop"
               class="hidden md:inline-flex"
-              aria-label="Shift Enter to send"
+              :aria-label="t('Shift Enter to send', '按 Shift + Enter 发送')"
             >
               <Kbd>Shift</Kbd>
               <Kbd>Enter</Kbd>
@@ -1138,10 +1138,10 @@ function setActiveAgent(value: unknown) {
               size="sm"
               class="rounded-lg"
               :disabled="stopping"
-              aria-label="Stop agent"
+              :aria-label="t('Stop agent', '停止助手')"
             >
               <Square class="size-3.5 fill-current" data-icon="inline-start" />
-              Stop
+              {{ t('Stop', '停止') }}
             </InputGroupButton>
             <InputGroupButton
               v-else
@@ -1153,7 +1153,7 @@ function setActiveAgent(value: unknown) {
               aria-keyshortcuts="Shift+Enter"
             >
               <ArrowUp data-icon="inline-start" />
-              Send
+              {{ t('Send', '发送') }}
             </InputGroupButton>
           </div>
         </InputGroupAddon>

@@ -5,7 +5,7 @@ import vm from 'node:vm'
 import ts from 'typescript'
 import { confirmationMedia } from '../app/utils/agentConfirmationState.ts'
 
-const source = readFileSync(new URL('../shared/utils/agentLayerResults.ts', import.meta.url), 'utf8').replace(/^import .*\n/gm, '')
+const source = readFileSync(new URL('../shared/utils/agentLayerResults.ts', import.meta.url), 'utf8').replace(/^import [^\r\n]*(?:\r?\n|$)/gm, '')
 const context = vm.createContext({ exports: {}, isImageLayerSplitterModel: model => model === 'image-layer-splitter' })
 vm.runInContext(ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText, context)
 const { completedLayerResults } = context.exports

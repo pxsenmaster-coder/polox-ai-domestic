@@ -1,16 +1,18 @@
 <script setup lang="ts">
 import { ASSET_LIBRARY_DELETE_CONFIRMATION } from '~~/shared/types/assetLibrary'
+import { useAppLocale } from '~/composables/useAppLocale'
 
 const props = defineProps<{
   open: boolean
   pending?: boolean
   libraryName?: string
 }>()
-
 const emit = defineEmits<{
   'update:open': [open: boolean]
   'confirm': []
 }>()
+
+const { t } = useAppLocale()
 
 const confirmation = ref('')
 const canDelete = computed(() => confirmation.value.trim() === ASSET_LIBRARY_DELETE_CONFIRMATION)
@@ -32,16 +34,16 @@ function onOpenChange(open: boolean) {
     <AlertDialogContent class="rounded-2xl border-border bg-card shadow-none sm:max-w-md">
       <AlertDialogHeader class="gap-2">
         <AlertDialogTitle>
-          Delete this asset library?
+          {{ t('Delete this asset library?', '删除此素材库？') }}
         </AlertDialogTitle>
         <AlertDialogDescription>
-          This cannot be undone. {{ libraryName || 'This library' }} and its assets will be removed.
+          {{ t(`This cannot be undone. ${libraryName || 'This library'} and its assets will be removed.`, `此操作无法撤销。素材库“${libraryName || '素材库'}”及其中素材将被删除。`) }}
         </AlertDialogDescription>
       </AlertDialogHeader>
 
       <div class="grid gap-2">
         <Label for="delete-asset-library-confirmation">
-          Type {{ ASSET_LIBRARY_DELETE_CONFIRMATION }} to confirm
+          {{ t(`Type ${ASSET_LIBRARY_DELETE_CONFIRMATION} to confirm`, `输入 ${ASSET_LIBRARY_DELETE_CONFIRMATION} 以确认`) }}
         </Label>
         <Input
           id="delete-asset-library-confirmation"
@@ -56,7 +58,7 @@ function onOpenChange(open: boolean) {
 
       <AlertDialogFooter>
         <AlertDialogCancel class="rounded-lg shadow-none" :disabled="pending">
-          Cancel
+          {{ t('Cancel', '取消') }}
         </AlertDialogCancel>
         <Button
           class="rounded-lg bg-destructive text-white shadow-none hover:bg-destructive/90 disabled:opacity-40"
@@ -64,7 +66,7 @@ function onOpenChange(open: boolean) {
           @click="emit('confirm')"
         >
           <Spinner v-if="pending" class="size-4" />
-          Delete library
+          {{ t('Delete library', '删除素材库') }}
         </Button>
       </AlertDialogFooter>
     </AlertDialogContent>

@@ -6,7 +6,7 @@ import ts from 'typescript'
 import { computed, effectScope, ref, watch } from 'vue'
 
 function script(path) {
-  return readFileSync(new URL(path, import.meta.url), 'utf8').split('<script setup lang="ts">')[1].split('</script>')[0].replace(/^import .*\n/gm, '')
+  return readFileSync(new URL(path, import.meta.url), 'utf8').split('<script setup lang="ts">')[1].split('</script>')[0].replace(/^import [^\r\n]*(?:\r?\n|$)/gm, '')
 }
 
 test('historical confirmation keeps saved params and cannot start generation', () => {

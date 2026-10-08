@@ -2,6 +2,7 @@
 import type { LlmProvider } from '~~/shared/utils/llmProviders'
 import { AlertTriangle, CheckCircle2, LoaderCircle } from 'lucide-vue-next'
 import { LLM_PROVIDER_PRESETS, normalizeLlmProvider } from '~~/shared/utils/llmProviders'
+import { useAppLocale } from '~/composables/useAppLocale'
 import { useServiceConnection } from '~/composables/useServiceConnection'
 
 interface ConnectionStatus {
@@ -30,6 +31,7 @@ interface ConnectionResult {
 }
 const status = ref<ConnectionStatus | null>(null)
 const { dialogOpen: open } = useServiceConnection()
+const { t } = useAppLocale()
 const testing = ref(false)
 const MASKED_KEY = '********'
 const llmProvider = ref<LlmProvider>('openrouter')
@@ -123,10 +125,10 @@ async function testConnection() {
     status.value = result
     results.value = result
     if (result.superseded)
-      error.value = 'Settings changed in another window. Test the current settings again.'
+      error.value = t('Settings changed in another window. Test the current settings again.', '设置已在另一个窗口中更改，请重新测试。')
     showSavedKeys()
   }
-  catch { error.value = 'Connection test could not finish. Please try again.'; await refresh() }
+  catch { error.value = t('Connection test could not finish. Please try again.', '连接测试未能完成，请重试。'); await refresh() }
   finally { testing.value = false }
 }
 </script>
@@ -137,18 +139,18 @@ async function testConnection() {
       <button type="button" class="inline-flex items-center gap-2 rounded-md px-3 py-2 text-xs font-medium transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring" :class="connected ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'" aria-label="Service connection" :title="connected ? 'Language model and an image provider tested successfully' : 'Configure and test a language model and an image provider'">
         <CheckCircle2 v-if="connected" class="size-4" />
         <AlertTriangle v-else class="size-4" />
-        <span>{{ connected ? 'Services connected' : 'API keys not configured' }}</span>
+        <span>{{ connected ? t('Services connected', '服务已连接') : t('API keys not configured', 'API 密钥未配置') }}</span>
       </button>
     </DialogTrigger>
     <DialogContent class="sm:max-w-md">
       <DialogHeader>
-        <DialogTitle>Service connection</DialogTitle>
-        <DialogDescription>Connect a language model (OpenRouter、DeepSeek、MiMo 或 GLM) and at least one image provider (fal or Ark) to start creating. Your keys are stored locally on this computer. Keep your API keys private. Never share them with anyone.</DialogDescription>
+        <DialogTitle>{{ t('Service connection', '服务连接') }}</DialogTitle>
+        <DialogDescription>{{ t('Connect a language model (OpenRouter, DeepSeek, MiMo, or GLM) and at least one image provider (fal or Ark) to start creating. Your keys are stored locally on this computer. Keep your API keys private. Never share them with anyone.', '连接一个大模型服务（OpenRouter、DeepSeek、MiMo 或 GLM）和至少一个图像服务（fal 或火山方舟）后即可开始创作。密钥仅保存在本机，请勿分享。') }}</DialogDescription>
       </DialogHeader>
       <form class="space-y-4" @submit.prevent="testConnection">
         <div class="space-y-2">
           <div class="flex items-center gap-3">
-            <Label for="llm-provider">大模型服务</Label>
+            <Label for="llm-provider">{{ t('Language model', '大模型服务') }}</Label>
           </div>
           <Select v-model="llmProvider" :disabled="testing">
             <SelectTrigger id="llm-provider" class="w-full">
@@ -164,7 +166,7 @@ async function testConnection() {
         <div class="space-y-2">
           <div class="flex items-center gap-3">
             <Label for="llm-key">{{ providerPreset.label }} API Key</Label>
-            <a :href="providerPreset.keyUrl" target="_blank" rel="noopener noreferrer" class="text-xs text-primary underline underline-offset-4 hover:opacity-80">获取 API Key ↗</a>
+            <a :href="providerPreset.keyUrl" target="_blank" rel="noopener noreferrer" class="text-xs text-primary underline underline-offset-4 hover:opacity-80">{{ t('Get API key ↗', '获取 API Key ↗') }}</a>
           </div>
           <Input id="llm-key" v-model="llmApiKey" type="password" autocomplete="off" :disabled="testing" :placeholder="`输入 ${providerPreset.label} API Key`" @focus="selectKey" />
         </div>
@@ -176,19 +178,19 @@ async function testConnection() {
           <Label for="llm-model">{{ providerPreset.label }} 模型 ID</Label>
           <Input id="llm-model" v-model="llmModel" required autocomplete="off" :disabled="testing" :placeholder="providerPreset.model" />
           <p class="text-xs text-muted-foreground">
-            DeepSeek 推荐使用支持图片理解的 <code>deepseek-v4-flash-vision-exp</code>；MiMo 默认使用 <code>mimo-v2.5-pro</code>；GLM 默认使用多模态 <code>glm-5.3-flash</code>。
+            {{ t('Recommended models: DeepSeek deepseek-v4-flash-vision-exp for image understanding; MiMo mimo-v2.5-pro; GLM glm-5.3-flash.', '推荐模型：DeepSeek 使用支持图片理解的 deepseek-v4-flash-vision-exp；MiMo 使用 mimo-v2.5-pro；GLM 使用 glm-5.3-flash。') }}
           </p>
         </div>
         <div class="space-y-2">
           <div class="flex items-center gap-3">
             <Label for="fal-key">fal API key</Label>
-            <a href="https://fal.ai/login?returnTo=%2Fdashboard%2Fkeys" target="_blank" rel="noopener noreferrer" class="text-xs text-primary underline underline-offset-4 hover:opacity-80" aria-label="Get fal API key (opens in a new tab)">Get API key ↗</a>
+            <a href="https://fal.ai/login?returnTo=%2Fdashboard%2Fkeys" target="_blank" rel="noopener noreferrer" class="text-xs text-primary underline underline-offset-4 hover:opacity-80" :aria-label="t('Get fal API key (opens in a new tab)', '获取 fal API 密钥（在新标签页打开）')">{{ t('Get API key ↗', '获取 API Key ↗') }}</a>
           </div>
           <Input id="fal-key" v-model="falKey" type="password" autocomplete="off" :disabled="testing" placeholder="Enter your fal API key" @focus="selectKey" />
         </div>
         <div class="space-y-3 rounded-md border p-3">
           <div class="flex items-center justify-between gap-3">
-            <Label for="ark-key">火山方舟 API key</Label>
+            <Label for="ark-key">{{ t('Volcano Ark API key', '火山方舟 API Key') }}</Label>
             <a href="https://console.volcengine.com/ark/region:cn-beijing/apikey" target="_blank" rel="noopener noreferrer" class="text-xs text-primary underline underline-offset-4 hover:opacity-80" aria-label="Get Ark API key (opens in a new tab)">获取 API Key ↗</a>
           </div>
           <Input id="ark-key" v-model="arkApiKey" type="password" autocomplete="off" :disabled="testing" placeholder="可选：输入方舟 API Key" @focus="selectKey" />
@@ -201,11 +203,11 @@ async function testConnection() {
             <Input id="ark-model" v-model="arkModel" required autocomplete="off" :disabled="testing" placeholder="控制台中的模型 ID" />
           </div>
           <p class="text-xs text-muted-foreground">
-            Ark 配置为可选项；填写后会通过 GET /models 验证密钥，不会发起付费生图。
+            {{ t('Ark is optional. When configured, the key is verified through GET /models without starting a paid image generation.', 'Ark 配置为可选项；填写后会通过 GET /models 验证密钥，不会发起付费生图。') }}
           </p>
         </div>
         <p class="text-xs text-muted-foreground">
-          Clear a key to remove it when you test and save. Testing saves your settings, sends a short request to the selected language model, verifies Ark when configured, and checks fal only when Ark is not configured as the primary image provider. The model request may incur a small charge.
+          {{ t('Clear a key to remove it when you test and save. Testing saves your settings, sends a short request to the selected language model, verifies Ark when configured, and checks fal only when Ark is not configured as the primary image provider. The model request may incur a small charge.', '清空密钥后测试并保存即可移除。测试会保存设置并向所选大模型发送短请求；配置 Ark 时会验证 Ark，且只有未配置 Ark 时才检查 fal。模型测试可能产生少量费用。') }}
         </p>
         <div v-if="results" class="space-y-2 rounded-md border p-3 text-sm" role="status" aria-live="polite">
           <p :class="results.llm.ok ? 'text-emerald-600' : 'text-red-600'">
@@ -224,7 +226,7 @@ async function testConnection() {
         <DialogFooter>
           <Button type="submit" :disabled="testing || !llmModel.trim()">
             <LoaderCircle v-if="testing" class="mr-2 size-4 animate-spin" />
-            {{ testing ? 'Testing connections…' : 'Test connection' }}
+            {{ testing ? t('Testing connections…', '正在测试连接…') : t('Test connection', '测试连接') }}
           </Button>
         </DialogFooter>
       </form>

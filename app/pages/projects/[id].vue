@@ -30,7 +30,7 @@ const { projects, selectedProjectId, loadProjects } = useProjects()
 const route = useRoute()
 const nuxtApp = useNuxtApp()
 const projectId = computed(() => String(route.params.id || ''))
-const { sessionId: agentSessionId, messages, images, allImages, status, waitingForUserConfirm, waitingForUserChoice, pending: agentPending, draft, attachments, attaching, error: agentError, sendMessage, stopAgent, stopping, attachFiles, attachUrls, removeAttachment, resolveConfirmation, resolveChoice, qualityPreference, confirmPolicy, agents, activeAgentId, canCreateAgent, canSwitchAgent, createAgent, selectAgent, queueNotice, applyCanvasJobs } = useAgentLab({
+const { sessionId: agentSessionId, messages, images, allImages, status, waitingForUserConfirm, waitingForUserChoice, pending: agentPending, draft, attachments, attaching, error: agentError, sendMessage, stopAgent, stopping, attachFiles, attachUrls, addCanvasAssets, removeAttachment, resolveConfirmation, resolveChoice, qualityPreference, confirmPolicy, agents, activeAgentId, canCreateAgent, canSwitchAgent, createAgent, selectAgent, queueNotice, applyCanvasJobs } = useAgentLab({
   projectId,
   onJobs(jobs) {
     for (const job of jobs)
@@ -586,6 +586,7 @@ async function onRemoveObjectCanvas(payload: {
             show-attach
             @save-to-library="requestSaveToLibrary"
             @save-to-library-many="requestSaveToLibrary"
+            @add-library-assets="addCanvasAssets"
             @delete="requestDelete"
             @delete-many="requestBulk('delete', $event)"
             @move-many="requestBulk('move', $event)"

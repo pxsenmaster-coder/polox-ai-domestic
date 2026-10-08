@@ -3,6 +3,7 @@ const props = defineProps<{
   url: string
   alt: string
   video?: boolean
+  audio?: boolean
   playing?: boolean
 }>()
 
@@ -19,7 +20,7 @@ function reportDimensions(event: Event) {
 }
 
 const failed = ref(false)
-const element = ref<HTMLImageElement | HTMLVideoElement>()
+const element = ref<HTMLImageElement | HTMLVideoElement | HTMLAudioElement>()
 
 watch([() => props.playing, element], ([playing, media]) => {
   if (!(media instanceof HTMLVideoElement))
@@ -40,6 +41,12 @@ onBeforeUnmount(() => {
   if (!media)
     return
   if (media instanceof HTMLVideoElement) {
+    media.pause()
+    media.removeAttribute('src')
+    media.load()
+    return
+  }
+  if (media instanceof HTMLAudioElement) {
     media.pause()
     media.removeAttribute('src')
     media.load()
@@ -71,6 +78,18 @@ function retry() {
       @loadedmetadata="reportDimensions"
       @error="failed = true"
     />
+    <div v-else-if="props.audio && !failed" class="flex size-full items-center justify-center p-3" @pointerdown.stop @dblclick.stop>
+      <audio
+        :key="url"
+        ref="element"
+        :src="url"
+        :aria-label="alt"
+        controls
+        preload="metadata"
+        class="w-full max-w-full"
+        @error="failed = true"
+      />
+    </div>
     <img
       v-else-if="!failed"
       :key="url"

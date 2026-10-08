@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { NavGroup, NavLink, NavSectionTitle } from '~/types/nav'
 import { useSidebar } from '~/components/ui/sidebar'
+import { useAppLocale } from '~/composables/useAppLocale'
 import { navMenu } from '~/constants/menus'
 
 function resolveNavItemComponent(item: NavLink | NavGroup | NavSectionTitle): any {
@@ -12,6 +13,7 @@ function resolveNavItemComponent(item: NavLink | NavGroup | NavSectionTitle): an
 
 const { sidebar } = useAppSettings()
 const { setOpenMobile } = useSidebar()
+const { t } = useAppLocale()
 const { public: publicConfig } = useRuntimeConfig()
 </script>
 
@@ -34,7 +36,7 @@ const { public: publicConfig } = useRuntimeConfig()
     <SidebarFooter>
       <SidebarMenu>
         <SidebarMenuItem v-if="publicConfig.discordUrl">
-          <SidebarMenuButton as-child tooltip="Join Discord">
+          <SidebarMenuButton as-child :tooltip="t('Join Discord', '加入 Discord')">
             <a
               :href="publicConfig.discordUrl"
               target="_blank"
@@ -42,12 +44,12 @@ const { public: publicConfig } = useRuntimeConfig()
               @click="setOpenMobile(false)"
             >
               <Icon name="simple-icons:discord" />
-              <span>Join Discord</span>
+              <span>{{ t('Join Discord', '加入 Discord') }}</span>
             </a>
           </SidebarMenuButton>
         </SidebarMenuItem>
         <SidebarMenuItem>
-          <SidebarMenuButton as-child tooltip="Visit PoloX Official Website">
+          <SidebarMenuButton as-child :tooltip="t('Visit PoloX Official Website', '访问 PoloX 官网')">
             <a
               href="https://polox.ai"
               target="_blank"
@@ -55,7 +57,7 @@ const { public: publicConfig } = useRuntimeConfig()
               @click="setOpenMobile(false)"
             >
               <Icon name="lucide:external-link" />
-              <span>Visit PoloX Website</span>
+              <span>{{ t('Visit PoloX Website', '访问 PoloX 官网') }}</span>
             </a>
           </SidebarMenuButton>
         </SidebarMenuItem>

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { AssetLibraryPublic } from '~~/shared/types/assetLibrary'
+import { useAppLocale } from '~/composables/useAppLocale'
 
 const props = withDefaults(defineProps<{
   library: AssetLibraryPublic
@@ -7,11 +8,12 @@ const props = withDefaults(defineProps<{
 }>(), {
   showActions: true,
 })
-
 const emit = defineEmits<{
   edit: []
   delete: []
 }>()
+
+const { t } = useAppLocale()
 
 const coverStyle = computed(() => {
   if (!props.library.coverUrl)
@@ -54,7 +56,7 @@ const coverStyle = computed(() => {
     </NuxtLink>
     <div class="flex min-h-8 items-center justify-between gap-2 px-4 pb-4">
       <p class="min-w-0 truncate text-sm text-muted-foreground">
-        {{ library.assetCount }} {{ library.assetCount === 1 ? 'asset' : 'assets' }}
+        {{ library.assetCount }} {{ t(library.assetCount === 1 ? 'asset' : 'assets', '项素材') }}
       </p>
       <DropdownMenu
         v-if="showActions"
@@ -66,7 +68,7 @@ const coverStyle = computed(() => {
             variant="ghost"
             size="icon-sm"
             class="shrink-0 rounded-lg shadow-none"
-            :aria-label="`Actions for ${library.name}`"
+            :aria-label="t(`Actions for ${library.name}`, `${library.name} 的操作`)"
           >
             <Icon
               name="i-lucide-ellipsis-vertical"
@@ -76,13 +78,13 @@ const coverStyle = computed(() => {
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" class="min-w-36">
           <DropdownMenuItem @click="emit('edit')">
-            Edit
+            {{ t('Edit', '编辑') }}
           </DropdownMenuItem>
           <DropdownMenuItem
             variant="destructive"
             @click="emit('delete')"
           >
-            Delete
+            {{ t('Delete', '删除') }}
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

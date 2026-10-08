@@ -2,6 +2,7 @@
 import type { SidebarMenuButtonVariants } from '~/components/ui/sidebar'
 import type { NavLink } from '~/types/nav'
 import { useSidebar } from '~/components/ui/sidebar'
+import { useAppLocale } from '~/composables/useAppLocale'
 
 const props = withDefaults(defineProps<{
   item: NavLink
@@ -11,7 +12,19 @@ const props = withDefaults(defineProps<{
 })
 
 const { setOpenMobile } = useSidebar()
+const { t } = useAppLocale()
 const route = useRoute()
+
+function title(value: string) {
+  const labels: Record<string, [string, string]> = {
+    'Home': ['Home', '首页'],
+    'Skills': ['Skills', '技能'],
+    'Projects': ['Projects', '项目'],
+    'Asset Libraries': ['Asset Libraries', '素材库'],
+  }
+  const [english, chinese] = labels[value] || [value, value]
+  return t(english, chinese)
+}
 
 const isActive = computed(() => {
   if (props.item.link === '/')
@@ -23,10 +36,10 @@ const isActive = computed(() => {
 <template>
   <SidebarMenu>
     <SidebarMenuItem>
-      <SidebarMenuButton as-child :tooltip="item.title" :size="size" :data-active="isActive">
+      <SidebarMenuButton as-child :tooltip="title(item.title)" :size="size" :data-active="isActive">
         <NuxtLink :to="item.link" @click="setOpenMobile(false)">
           <Icon :name="item.icon || ''" />
-          <span>{{ item.title }}</span>
+          <span>{{ title(item.title) }}</span>
           <span v-if="item.new" class="rounded-md bg-[#adfa1d] px-1.5 py-0.5 text-xs text-black leading-none no-underline group-hover:no-underline">
             New
           </span>

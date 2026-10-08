@@ -1,12 +1,16 @@
 import type { ChatMessage, ToolCall } from './types'
 import { Buffer } from 'node:buffer'
+import sharp from 'sharp'
 import { falReadableUrl } from '../utils/falFiles'
 import { llmAuthHeaders, llmChatCompletionsUrl, llmProviderPreset } from '../utils/llmProviders'
 import { readStoredMedia } from '../utils/localMedia'
 import { readServiceSettings } from '../utils/serviceSettings'
 import { agentEnv } from './env'
 
-const MAX_INLINE_IMAGE_BYTES = 24 * 1024 * 1024
+const MAX_INLINE_IMAGE_BYTES = 30 * 1024 * 1024
+const MAX_LLM_INLINE_IMAGE_BYTES = 18 * 1024 * 1024
+
+class LlmImagePayloadTooLargeError extends Error {}
 
 export interface StreamDelta {
   content?: string
@@ -40,7 +44,7 @@ interface OpenRouterChunk {
   error?: { message?: string }
 }
 
-async function providerImageUrl(url: string) {
+export async function providerImageUrl(url: string, compact = false) {
   const local = await readStoredMedia(url, MAX_INLINE_IMAGE_BYTES)
   // fal remains the preferred CDN hand-off when configured. When it is not
   // configured, send local uploads as data URLs so DeepSeek/MiMo/GLM can still
@@ -51,7 +55,12 @@ async function providerImageUrl(url: string) {
   if (readServiceSettings().falKey) {
     return falReadableUrl(url)
   }
-  return `data:${local.mime};base64,${Buffer.from(local.bytes).toString('base64')}`
+  const image = await sharp(local.bytes, { limitInputPixels: 64_000_000 })
+    .rotate()
+    .resize({ width: compact ? 1024 : 1536, height: compact ? 1024 : 1536, fit: 'inside', withoutEnlargement: true })
+    .webp({ quality: compact ? 68 : 82, effort: 4 })
+    .toBuffer()
+  return `data:image/webp;base64,${Buffer.from(image).toString('base64')}`
 }
 
 /** Keep raw bbox coordinates out of LLM text; the model receives the visual overlay instead. */
@@ -100,17 +109,59 @@ function messagesForLlm(messages: ChatMessage[]): ChatMessage[] {
   })
 }
 
-async function providerMessages(messages: ChatMessage[]) {
-  return Promise.all(messages.map(async ({ historyId: _historyId, internal: _internal, ...message }) => {
-    if (!Array.isArray(message.content))
-      return message
-    const content = await Promise.all(message.content.map(async (part) => {
-      if (part.type !== 'image_url')
-        return part
-      return { ...part, image_url: { ...part.image_url, url: await providerImageUrl(part.image_url.url) } }
-    }))
-    return { ...message, content }
-  }))
+export async function providerMessages(messages: ChatMessage[], compact = false) {
+  const result: ChatMessage[] = []
+  let inlineImageBytes = 0
+  for (const { historyId: _historyId, internal: _internal, ...message } of messages) {
+    if (!Array.isArray(message.content)) {
+      result.push(message)
+      continue
+    }
+    const content = []
+    for (const part of message.content) {
+      if (part.type !== 'image_url') {
+        content.push(part)
+        continue
+      }
+      const url = await providerImageUrl(part.image_url.url, compact)
+      if (url.startsWith('data:image/')) {
+        const encoded = url.slice(url.indexOf(',') + 1)
+        inlineImageBytes += Math.max(0, Math.floor(encoded.length * 3 / 4) - (encoded.endsWith('==') ? 2 : encoded.endsWith('=') ? 1 : 0))
+        if (inlineImageBytes > MAX_LLM_INLINE_IMAGE_BYTES)
+          throw new LlmImagePayloadTooLargeError('The image request is too large after optimization. Remove a few images or use smaller files, then try again.')
+      }
+      content.push({ ...part, image_url: { ...part.image_url, url } })
+    }
+    result.push({ ...message, content })
+  }
+  return result
+}
+
+async function postWithImageFallback(url: string, init: RequestInit, buildBody: (compact: boolean) => Promise<Record<string, unknown>>) {
+  let compact = false
+  let body: Record<string, unknown>
+  try {
+    body = await buildBody(false)
+  }
+  catch (error) {
+    if (!(error instanceof LlmImagePayloadTooLargeError))
+      throw error
+    compact = true
+    body = await buildBody(true)
+  }
+  let response = await fetch(url, { ...init, body: JSON.stringify(body) })
+  if (response.status !== 413)
+    return response
+  await response.text().catch(() => '')
+  if (compact)
+    throw new Error('The image request is too large for the selected language model. Remove a few images or use smaller files, then try again.')
+  body = await buildBody(true)
+  response = await fetch(url, { ...init, body: JSON.stringify(body) })
+  if (response.status === 413) {
+    await response.text().catch(() => '')
+    throw new Error('The image request is too large for the selected language model. Remove a few images or use smaller files, then try again.')
+  }
+  return response
 }
 
 function providerHeaders() {
@@ -137,18 +188,19 @@ export async function completeText(options: {
   maxTokens?: number
 }) {
   const { settings, headers } = providerHeaders()
-  const response = await fetch(llmChatCompletionsUrl(settings.llmProvider, settings.llmBaseUrl), {
+  const response = await postWithImageFallback(llmChatCompletionsUrl(settings.llmProvider, settings.llmBaseUrl), {
     method: 'POST',
     signal: options.signal,
     headers,
-    body: JSON.stringify({
+  }, async (compact) => {
+    return {
       model: settings.llmModel,
       temperature: options.temperature ?? 0.2,
       stream: false,
       ...(settings.llmProvider === 'openrouter' ? { reasoning: { enabled: false } } : {}),
       ...(settings.llmProvider === 'mimo' ? { max_completion_tokens: options.maxTokens ?? 32 } : { max_tokens: options.maxTokens ?? 32 }),
-      messages: await providerMessages(messagesForLlm(options.messages)),
-    }),
+      messages: await providerMessages(messagesForLlm(options.messages), compact),
+    }
   })
 
   if (!response.ok) {
@@ -174,21 +226,22 @@ export async function streamChat(options: {
   onDelta: (delta: StreamDelta) => void
 }) {
   const { settings, headers } = providerHeaders()
-  const response = await fetch(llmChatCompletionsUrl(settings.llmProvider, settings.llmBaseUrl), {
+  const response = await postWithImageFallback(llmChatCompletionsUrl(settings.llmProvider, settings.llmBaseUrl), {
     method: 'POST',
     headers,
-    body: JSON.stringify({
+    signal: options.signal,
+  }, async (compact) => {
+    return {
       model: settings.llmModel,
       temperature: 0.4,
       stream: true,
       ...(settings.llmProvider === 'openrouter' ? { reasoning: { enabled: false } } : {}),
-      messages: await providerMessages(messagesForLlm(options.messages)),
+      messages: await providerMessages(messagesForLlm(options.messages), compact),
       tools: options.tools,
       tool_choice: options.disableTools ? 'none' : options.requiredTool ? { type: 'function', function: { name: options.requiredTool } } : 'auto',
       parallel_tool_calls: !options.requiredTool,
       ...(settings.llmProvider === 'mimo' ? { max_completion_tokens: 4096 } : {}),
-    }),
-    signal: options.signal,
+    }
   })
 
   if (!response.ok) {

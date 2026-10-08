@@ -4,6 +4,7 @@ import { test } from 'node:test'
 
 const canvas = await readFile(new URL('../app/components/agent-lab/InfiniteCanvas.vue', import.meta.url), 'utf8')
 const preview = await readFile(new URL('../app/components/tools/ImageLayerStackPreview.vue', import.meta.url), 'utf8')
+const canvasMedia = await readFile(new URL('../app/components/agent-lab/InfiniteCanvasMedia.vue', import.meta.url), 'utf8')
 
 test('selecting a layer from the toolbar enters layer editing', () => {
   assert.match(canvas, /function selectLayerForEditing\(asset: Asset, layerId: string\)/)
@@ -37,8 +38,16 @@ test('cancelled outer gestures restore their original canvas state', () => {
   assert.match(canvas, /if \(drag\?\.id\)[\s\S]*positions\.value = new Map\(positions\.value\)\.set\(drag\.id, \{ \.\.\.drag\.cardOrigin! \}\)/)
   assert.match(canvas, /if \(resize\)[\s\S]*positions\.value = new Map\(positions\.value\)\.set\(resize\.id, \{ \.\.\.resize\.origin \}\)/)
   assert.match(canvas, /if \(pinch\)[\s\S]*Object\.assign\(camera, pinch\.camera\)/)
+  assert.match(canvas, /arrangedModeOrigin\?: boolean/)
+  assert.match(canvas, /if \(arrangedModeOrigin !== undefined\)[\s\S]*setArrangedMode\(arrangedModeOrigin\)/)
   assert.match(canvas, /completedPointer === event\.pointerId/)
   assert.match(canvas, /synthetic loss so a completed drag is not rolled back/)
+})
+
+test('audio canvas assets render native controls without starting a card drag', () => {
+  assert.match(canvas, /:audio="asset\.audio"/)
+  assert.match(canvasMedia, /<audio[\s\S]*controls[\s\S]*@error="failed = true"/)
+  assert.match(canvasMedia, /@pointerdown\.stop/)
 })
 
 test('layer corner resize updates position and scale around the opposite anchor', () => {

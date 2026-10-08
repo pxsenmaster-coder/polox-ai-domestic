@@ -7,7 +7,7 @@ import ts from 'typescript'
 import { computed, effectScope, nextTick, reactive, ref, shallowRef, watch } from 'vue'
 
 test('history windows abort stale requests, prepend messages, and keep failed pages available for retry', async () => {
-  const source = readFileSync(new URL('../app/components/agent-lab/AgentLabHistoryPanel.vue', import.meta.url), 'utf8').split('<script setup lang="ts">')[1].split('</script>')[0].replace(/^import .*\n/gm, '').replaceAll('import.meta.client', 'true')
+  const source = readFileSync(new URL('../app/components/agent-lab/AgentLabHistoryPanel.vue', import.meta.url), 'utf8').split('<script setup lang="ts">')[1].split('</script>')[0].replace(/^import [^\r\n]*(?:\r?\n|$)/gm, '').replaceAll('import.meta.client', 'true')
   const requests = []
   const props = reactive({ endpoint: '/history/first', beforeId: '' })
   let dispose
@@ -25,6 +25,8 @@ test('history windows abort stale requests, prepend messages, and keep failed pa
     AbortController,
     requestAnimationFrame: fn => fn(),
     $fetch: (url, options) => new Promise((resolve, reject) => requests.push({ url, options, resolve, reject })),
+    messageMedia: () => [],
+    presentAgentResults: messages => messages,
   })
   const js = ts.transpileModule(`${source}\nglobalThis.api = { page, load, loading, error };`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText
   scope.run(() => vm.runInContext(js, context))
@@ -60,7 +62,7 @@ test('history windows abort stale requests, prepend messages, and keep failed pa
 })
 
 test('embedded history loads lazily, preserves the reading position, deduplicates, and stops silently at the beginning', async () => {
-  const source = readFileSync(new URL('../app/components/agent-lab/AgentLabHistoryPanel.vue', import.meta.url), 'utf8').split('<script setup lang="ts">')[1].split('</script>')[0].replace(/^import .*\n/gm, '').replaceAll('import.meta.client', 'true')
+  const source = readFileSync(new URL('../app/components/agent-lab/AgentLabHistoryPanel.vue', import.meta.url), 'utf8').split('<script setup lang="ts">')[1].split('</script>')[0].replace(/^import [^\r\n]*(?:\r?\n|$)/gm, '').replaceAll('import.meta.client', 'true')
   const requests = []
   const node = { scrollTop: 12, scrollHeight: 500 }
   const props = reactive({ endpoint: '/history', beforeId: 'live-first', embedded: true, scrollContainer: node })
@@ -77,6 +79,8 @@ test('embedded history loads lazily, preserves the reading position, deduplicate
     AbortController,
     requestAnimationFrame: fn => fn(),
     $fetch: (url, options) => new Promise(resolve => requests.push({ url, options, resolve })),
+    messageMedia: () => [],
+    presentAgentResults: messages => messages,
   })
   const js = ts.transpileModule(`${source}\nglobalThis.api = { page, load };`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText
   scope.run(() => vm.runInContext(js, context))
@@ -110,10 +114,12 @@ test('scrolling up reveals cached turns before requesting archived history', asy
     .split('function scrollToBottom()')[0]
   const scope = effectScope()
   const context = vm.createContext({
-    props: reactive({ messages: Array.from({ length: 95 }, (_, i) => ({ id: String(i) })), sessionId: 'session' }),
+    props: reactive({ messages: Array.from({ length: 95 }, (_, i) => ({ id: String(i) })), images: [], sessionId: 'session' }),
     ref,
     computed,
     watch,
+    messageMedia: () => [],
+    presentAgentResults: messages => messages,
     nextTick: async () => { context.api.scroller.value.scrollHeight += 400 },
   })
   const js = ts.transpileModule(`const pinnedToBottom =${source}\nglobalThis.api = { visibleMessages, openHistory, scroller, historyPanel, onScrollerWheel };`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText

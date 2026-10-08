@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import { ConfigProvider } from 'reka-ui'
 import { Toaster } from '@/components/ui/sonner'
+import { useAppLocale } from '~/composables/useAppLocale'
 import 'vue-sonner/style.css'
 
 const { theme } = useAppSettings()
+const { locale, restoreLocale } = useAppLocale()
+onMounted(restoreLocale)
 useHead({
   meta: [
     { charset: 'utf-8' },
@@ -16,7 +19,7 @@ useHead({
     { rel: 'apple-touch-icon', sizes: '180x180', href: '/apple-touch-icon.png' },
   ],
   htmlAttrs: {
-    lang: 'en',
+    lang: computed(() => locale.value),
   },
   bodyAttrs: {
     class: computed(() => `color-${theme.value?.color || 'green'} theme-${theme.value?.type || 'mono'} theme-rounded-none`),
